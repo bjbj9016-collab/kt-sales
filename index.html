@@ -538,7 +538,7 @@ async function toggleAuth(){
     await new Promise((res,rej)=>{
       const c=google.accounts.oauth2.initTokenClient({
         client_id:clientId,
-        scope:'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/contacts',
+        scope:'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/contacts',
         callback:t=>{if(t.error)rej(t);else{token=t.access_token;res();}}
       });
       c.requestAccessToken();
@@ -958,111 +958,61 @@ async function analyzeCustomerFolder(folderId, folderName){
   document.getElementById('ocrResult').scrollIntoView({behavior:'smooth'});
 
   try{
-    // 1. 폴더 안 이미지 파일 목록
-    const q=`'${folderId}' in parents and (mimeType contains 'image/') and trashed=false`;
-    const data=await driveapi(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&orderBy=name`);
+    const q="'"+folderId+"' in parents and trashed=false";
+    const data=await driveapi('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name,mimeType)&orderBy=name');
     const files=data.files||[];
+    if(!files.length){showNote('ocrNote','⚠️ 폴더 안에 파일이 없습니다.','warn');return;}
 
-    if(!files.length){
-      showNote('ocrNote','⚠️ 폴더 안에 이미지 서류가 없습니다. Drive API 키 또는 폴더 공유 설정을 확인하세요.','warn');
-      return;
+    const docs=files.filter(f=>f.mimeType.startsWith('image/')||f.mimeType==='application/pdf');
+    if(!docs.length){showNote('ocrNote','⚠️ 이미지/PDF 서류가 없습니다.','warn');return;}
+
+    showNote('ocrNote','📄 서류 '+docs.length+'장 발견 — OCR 분석 중...','info');
+
+    if(!token){
+      showNote('ocrNote','⚠️ 시트 로그인을 먼저 해주세요.','warn');
+      var d=Object.assign({},parseName(folderName));
+      d['고객명']=d.custName;d['생년월일']=d.birth;
+      d['판매자']=d.sellerDisplay;d['가입유형']=d.activationType;
+      renderOcrResult(d);return;
     }
 
-    showNote('ocrNote',`📄 서류 ${files.length}장 발견 — Claude AI 분석 중...`,'info');
-
-    // 2. 이미지 다운로드 (Drive API key 방식)
-    const apiKey=gv('apiKey');
-    const imageContents=[];
-    for(const f of files.slice(0,3)){  // 최대 3장
+    var ocrTexts=[];
+    for(var f of docs.slice(0,3)){
       try{
-        const dlUrl=`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`;
-        const r=token?await fetch(dlUrl,{headers:{'Authorization':'Bearer '+token}}):await fetch(dlUrl+'&key='+encodeURIComponent(apiKey));
-        if(!r.ok)continue;
-        const blob=await r.blob();
-        const b64=await blobToBase64(blob);
-        const mimeType=f.mimeType||'image/jpeg';
-        imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
-      }catch(e){console.warn('이미지 다운로드 실패:',f.name,e);}
+        showNote('ocrNote','🔍 '+f.name+' OCR 처리 중...','info');
+        var copyResp=await fetch('https://www.googleapis.com/drive/v3/files/'+f.id+'/copy',{
+          method:'POST',
+          headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+          body:JSON.stringify({mimeType:'application/vnd.google-apps.document',name:'_ocr_'+Date.now()})
+        });
+        if(!copyResp.ok){console.warn('Copy failed:',copyResp.status);continue;}
+        var copyData=await copyResp.json();
+        var txtResp=await fetch('https://www.googleapis.com/drive/v3/files/'+copyData.id+'/export?mimeType=text/plain',{
+          headers:{'Authorization':'Bearer '+token}
+        });
+        if(txtResp.ok){var txt=await txtResp.text();if(txt.trim())ocrTexts.push(txt);}
+        fetch('https://www.googleapis.com/drive/v3/files/'+copyData.id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}}).catch(function(){});
+      }catch(e){console.warn('OCR fail:',f.name,e);}
     }
 
-    if(!imageContents.length){
-      showNote('ocrNote','❌ 이미지를 불러올 수 없습니다. Drive 폴더를 "링크 있는 사용자" 공개로 설정하세요.','err');
-      return;
-    }
-
-    // 3. Claude API 호출
-    const anthropicKey=gv('anthropicKey');
-    if(!anthropicKey){
-      // Anthropic 키 없이 Google Drive OCR 시도
-      if(token && imageContents.length>0){
-        showNote('ocrNote','📄 Google Drive에서 서류 텍스트 추출 중...','info');
-        try{
-          // Drive API로 이미지를 Google Doc으로 변환 (자동 OCR)
-          const ocrTexts=[];
-          for(const f of files.slice(0,3)){
-            try{
-              const copyResp=await fetch('https://www.googleapis.com/drive/v3/files/'+f.id+'/copy',{
-                method:'POST',
-                headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-                body:JSON.stringify({mimeType:'application/vnd.google-apps.document',name:'_ocr_temp_'+f.name})
-              });
-              if(copyResp.ok){
-                const copyData=await copyResp.json();
-                const docResp=await fetch('https://www.googleapis.com/drive/v3/files/'+copyData.id+'/export?mimeType=text/plain',{
-                  headers:{'Authorization':'Bearer '+token}
-                });
-                if(docResp.ok){
-                  const txt=await docResp.text();
-                  ocrTexts.push(txt);
-                }
-                // 임시 파일 삭제
-                fetch('https://www.googleapis.com/drive/v3/files/'+copyData.id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
-              }
-            }catch(e){console.warn('OCR failed for',f.name,e);}
-          }
-          if(ocrTexts.length>0){
-            const allText=ocrTexts.join('\n---\n');
-            ocrData=parseOcrText(allText,folderName);
-            renderOcrResult(ocrData);
-            showNote('ocrNote','✅ Google Drive OCR 완료','ok');
-            return;
-          }
-        }catch(e){console.warn('Drive OCR error:',e);}
-      }
-      showNote('ocrNote','⚠️ Anthropic API 키가 없어 서류 자동 분석이 불가합니다.\n설정 탭에서 입력하거나, 시트 로그인 후 다시 시도하세요.','warn');
-      ocrData=Object.assign({},parseName(folderName));
-      ocrData.고객명=ocrData.custName;
-      ocrData.생년월일=ocrData.birth;
-      ocrData.판매자=ocrData.sellerDisplay;
-      ocrData.가입유형=ocrData.activationType;
+    if(ocrTexts.length>0){
+      var allText=ocrTexts.join('\n---\n');
+      console.log('OCR extracted:',allText.substring(0,300));
+      ocrData=parseOcrText(allText,folderName);
       renderOcrResult(ocrData);
-      return;
-    }
-
-
-    // === 손상 복원 코드 ===
-    callClaude(imageContents, anthropicKey);
-    if(parsed){
-      ocrData=parsed;
-      ocrData.고객명=ocrData.custName||ocrData.고객명||parseName(folderName).custName;
-      ocrData.생년월일=ocrData.birth||ocrData.생년월일||parseName(folderName).birth;
-      ocrData.판매자=ocrData.sellerDisplay||ocrData.판매자||parseName(folderName).sellerDisplay;
-      ocrData.가입유형=ocrData.activationType||ocrData.가입유형||parseName(folderName).activationType;
+      showNote('ocrNote','✅ OCR 분석 완료! ('+ocrTexts.length+'장 처리)','ok');
     } else {
-      ocrData=Object.assign({},parseName(folderName));
-      ocrData.고객명=ocrData.custName;
-      ocrData.생년월일=ocrData.birth;
-      ocrData.판매자=ocrData.sellerDisplay;
-      ocrData.가입유형=ocrData.activationType;
+      showNote('ocrNote','⚠️ OCR 실패. 폴더명 정보만 사용합니다.','warn');
+      var d2=Object.assign({},parseName(folderName));
+      d2['고객명']=d2.custName;d2['생년월일']=d2.birth;
+      d2['판매자']=d2.sellerDisplay;d2['가입유형']=d2.activationType;
+      renderOcrResult(d2);
     }
-    renderOcrResult(ocrData);
   }catch(e){
     console.error('analyzeCustomerFolder error:',e);
-    showNote('ocrNote','\u274c 분석 중 오류: '+e.message,'err');
+    showNote('ocrNote','❌ 오류: '+e.message,'err');
   }
 }
-
-// === 손상 복원: 누락된 헬퍼 함수들 ===
 
 function blobToBase64(blob){
   return new Promise((resolve,reject)=>{
