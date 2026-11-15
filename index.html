@@ -579,7 +579,7 @@ async function loadFolders(){
       const p=parseName(f.name);
       const div=document.createElement('div');div.className='fi';
       div.innerHTML=`<div class="fi-name">${p.custName||f.name}</div><div class="fi-meta">${p.dateFormatted||''} · ${p.sellerDisplay||''} · ${p.modelRaw||''} · ${p.activationType||''} · ${p.discountType||''}</div>`;
-      div.onclick=()=>{document.querySelectorAll('.fi').forEach(x=>x.classList.remove('sel'));div.classList.add('sel');fillForm(p);document.getElementById('step2').style.display='block';document.getElementById('step2').scrollIntoView({behavior:'smooth'});};
+      div.onclick=()=>{document.querySelectorAll('.fi').forEach(x=>x.classList.remove('sel'));div.classList.add('sel');fillForm(p);document.getElementById('step2').style.display='block';document.getElementById('step2').scrollIntoView({behavior:'smooth'});analyzeCustomerFolder(f.id,f.name);};
       list.appendChild(div);
     });
   }catch(e){showNote('folderNote','❌ '+e.message,'err');console.error('loadFolders error:',e);}
@@ -880,7 +880,7 @@ async function ocrLoadFolders(){
     folders.forEach(f=>{
       const div=document.createElement('div');div.className='fi';
       const p=parseName(f.name);
-      div.innerHTML<`<div class="fi-name">${p.custName||f.name}</div><div class="fi-meta">${p.dateFormatted||''} · ${p.sellerDisplay||''} · ${p.modelRaw||''} · ${p.activationType||''}</div>`;
+      div.innerHTML=`<div class="fi-name">${p.custName||f.name}</div><div class="fi-meta">${p.dateFormatted||''} · ${p.sellerDisplay||''} · ${p.modelRaw||''} · ${p.activationType||''}</div>`;
       div.onclick=()=>{
         document.querySelectorAll('#ocrFolderList .fi').forEach(x=>x.classList.remove('sel'));
         div.classList.add('sel');
