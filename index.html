@@ -578,7 +578,7 @@ async function loadFolders(){
     folders.forEach(f=>{
       const p=parseName(f.name);
       const div=document.createElement('div');div.className='fi';
-      div.innerHTML<`<div class="fi-name">${p.custName||f.name}</div><div class="fi-meta">${p.dateFormatted||''} · ${p.sellerDisplay||''} · ${p.modelRaw||''} · ${p.activationType||''} · ${p.discountType||''}</div>`;
+      div.innerHTML=`<div class="fi-name">${p.custName||f.name}</div><div class="fi-meta">${p.dateFormatted||''} · ${p.sellerDisplay||''} · ${p.modelRaw||''} · ${p.activationType||''} · ${p.discountType||''}</div>`;
       div.onclick=()=>{document.querySelectorAll('.fi').forEach(x=>x.classList.remove('sel'));div.classList.add('sel');fillForm(p);document.getElementById('step2').style.display='block';document.getElementById('step2').scrollIntoView({behavior:'smooth'});};
       list.appendChild(div);
     });
