@@ -345,6 +345,23 @@ code{font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1
 
 <!-- ══ 단가 탭 ══ -->
 <div id="page-price" class="page">
+  <!-- 단가표 업로드 카드 -->
+  <div class="card">
+    <div class="card-head">📤 단가표 업로드</div>
+    <p style="color:#666;font-size:13px;margin:0 0 12px">PDF, PNG, JPG 파일을 업로드하면 AI가 단가표를 분석합니다.</p>
+    <div id="priceDropZone" style="border:2px dashed #c5cae9;border-radius:12px;padding:32px 16px;text-align:center;cursor:pointer;background:#f8f9ff;transition:all .2s" onclick="document.getElementById('priceFileInput').click()">
+      <div style="font-size:40px;margin-bottom:8px">📎</div>
+      <div style="font-weight:600;color:#3949ab">클릭 또는 파일을 드래그하세요</div>
+      <div style="color:#999;font-size:12px;margin-top:4px">PDF · PNG · JPG (최대 10MB)</div>
+    </div>
+    <input type="file" id="priceFileInput" accept=".pdf,.png,.jpg,.jpeg" multiple style="display:none" onchange="handlePriceUpload(this.files)">
+    <div id="priceUploadList" style="margin-top:12px"></div>
+    <div id="priceUploadNote" class="note" style="display:none"></div>
+    <button class="btn btn-p" id="btnAnalyzePrice" style="display:none;margin-top:8px" onclick="analyzePriceTable()">🔍 AI 단가표 분석</button>
+    <div id="priceTableResult" style="margin-top:12px"></div>
+  </div>
+
+  <!-- 기존 단가 계산기 카드 -->
   <div class="card">
     <div class="card-head">💰 단가표 계산기</div>
     <div class="field"><label>단가표 URL (설정에서 자동 적용)</label><input id="pc_url" placeholder="https://docs.google.com/spreadsheets/d/..."></div>
@@ -1106,6 +1123,161 @@ function renderOcrResult(data){
 // 페이지 초기화
 if(document.readyState!=="loading"){ checkOcrReady(); }
 else { document.addEventListener("DOMContentLoaded", function(){ checkOcrReady(); }); }
+
+
+// ══ 단가표 업로드 기능 ══
+let priceFiles=[];
+
+function handlePriceUpload(files){
+  const zone=document.getElementById('priceDropZone');
+  const list=document.getElementById('priceUploadList');
+  const btn=document.getElementById('btnAnalyzePrice');
+  
+  for(const f of files){
+    if(f.size>10*1024*1024){showNote('priceUploadNote','\u26a0\ufe0f 파일 크기가 10MB를 초과합니다: '+f.name,'warn');continue;}
+    if(!/\.(pdf|png|jpe?g)$/i.test(f.name)){showNote('priceUploadNote','\u26a0\ufe0f 지원하지 않는 형식입니다: '+f.name,'warn');continue;}
+    priceFiles.push(f);
+    const div=document.createElement('div');
+    div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0f4ff;border-radius:8px;margin-bottom:6px';
+    const icon=f.name.match(/\.pdf$/i)?'\ud83d\udcc4':'\ud83d\uddbc\ufe0f';
+    div.innerHTML=icon+' <span style="flex:1;font-size:13px">'+f.name+' <span style="color:#999">('+Math.round(f.size/1024)+'KB)</span></span><button onclick="removePriceFile('+
+    (priceFiles.length-1)+',this.parentElement)" style="background:none;border:none;cursor:pointer;font-size:16px">\u274c</button>';
+    list.appendChild(div);
+  }
+  if(priceFiles.length>0){
+    btn.style.display='block';
+    zone.style.borderColor='#3949ab';
+    zone.querySelector('div:first-child').textContent='\u2705';
+    zone.querySelector('div:nth-child(2)').textContent=priceFiles.length+'개 파일 선택됨';
+  }
+  document.getElementById('priceFileInput').value='';
+}
+
+function removePriceFile(idx,el){
+  priceFiles[idx]=null;
+  if(el)el.remove();
+  const active=priceFiles.filter(f=>f);
+  if(!active.length){
+    document.getElementById('btnAnalyzePrice').style.display='none';
+    const zone=document.getElementById('priceDropZone');
+    zone.style.borderColor='#c5cae9';
+    zone.querySelector('div:first-child').textContent='\ud83d\udcce';
+    zone.querySelector('div:nth-child(2)').textContent='클릭 또는 파일을 드래그하세요';
+  }
+}
+
+async function analyzePriceTable(){
+  const files=priceFiles.filter(f=>f);
+  if(!files.length){showNote('priceUploadNote','\u26a0\ufe0f 파일을 먼저 업로드하세요','warn');return;}
+  const apiKey=gv('anthropicKey');
+  if(!apiKey){showNote('priceUploadNote','\u26a0\ufe0f 설정 탭에서 Anthropic API 키를 먼저 입력하세요','warn');return;}
+  
+  const btn=document.getElementById('btnAnalyzePrice');
+  btn.innerHTML='<span class="spin"></span> 분석 중...';btn.disabled=true;
+  showNote('priceUploadNote','\ud83d\udd0d AI가 단가표를 분석하고 있습니다...','info');
+  
+  try{
+    const imageContents=[];
+    for(const f of files){
+      const b64=await blobToBase64(f);
+      let mimeType=f.type||'image/jpeg';
+      if(f.name.match(/\.pdf$/i))mimeType='application/pdf';
+      imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
+    }
+    
+    const messages=[{role:'user',content:[
+      ...imageContents,
+      {type:'text',text:`이 이미지는 KT 통신 단가표입니다.
+각 단말기별로 다음 정보를 JSON 배열로 추출해주세요:
+[{
+  "modelCode": "SM-A175NK-KP",
+  "petName": "갤럭시 A17 폼폼푸린",
+  "retailPrice": 396000,
+  "tiers": {
+    "110K": {"신규": 0, "기변": 0, "MNP": 0},
+    "90K": {"신규": 0, "기변": 0, "MNP": 0},
+    "61K": {"신규": 0, "기변": 0, "MNP": 0},
+    "37K": {"신규": 0, "기변": 0, "MNP": 0}
+  }
+}]
+- 금액은 숫자만 (원 단위)
+- 요금제 구간(110K/90K/61K/37K)별, 개통유형(신규/기변/MNP)별 지원금 금액
+- 표에 없는 값은 0
+JSON만 출력하세요.`}
+    ]}];
+
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages})
+    });
+
+    if(!resp.ok){
+      showNote('priceUploadNote','\u274c API 오류: '+resp.status,'err');
+      btn.textContent='\ud83d\udd0d AI 단가표 분석';btn.disabled=false;return;
+    }
+
+    const result=await resp.json();
+    const text=(result.content||[]).map(c=>c.text||'').join('');
+    const jsonMatch=text.match(/\[([\s\S]*?)\]/);
+    
+    if(jsonMatch){
+      const priceData=JSON.parse(jsonMatch[0]);
+      // 로컬 저장
+      try{localStorage.setItem('ktPriceData',JSON.stringify(priceData));}catch(e){}
+      renderPriceTable(priceData);
+      showNote('priceUploadNote','\u2705 단가표 분석 완료! '+priceData.length+'개 모델 추출','ok');
+    } else {
+      showNote('priceUploadNote','\u26a0\ufe0f 단가표를 인식하지 못했습니다. 다른 파일을 시도해보세요.','warn');
+    }
+  }catch(e){
+    console.error('analyzePriceTable error:',e);
+    showNote('priceUploadNote','\u274c 분석 오류: '+e.message,'err');
+  }
+  btn.textContent='\ud83d\udd0d AI 단가표 분석';btn.disabled=false;
+}
+
+function renderPriceTable(data){
+  const div=document.getElementById('priceTableResult');
+  if(!data||!data.length){div.innerHTML='';return;}
+  let h='<h4 style="margin:8px 0">\ud83d\udcca 단가표 ('+data.length+'개 모델)</h4>';
+  h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+  h+='<tr style="background:#3949ab;color:#fff"><th style="padding:6px">모델</th><th>펫네임</th><th>출고가</th>';
+  h+='<th>110K기변</th><th>90K기변</th><th>61K기변</th><th>37K기변</th></tr>';
+  data.forEach((m,i)=>{
+    const bg=i%2?'#f8f9ff':'#fff';
+    const t=m.tiers||{};
+    h+='<tr style="background:'+bg+'">';
+    h+='<td style="padding:4px 6px;border:1px solid #e0e0e0;font-family:monospace;font-size:11px">'+
+      (m.modelCode||'')+'</td>';
+    h+='<td style="padding:4px 6px;border:1px solid #e0e0e0">'+(m.petName||'')+'</td>';
+    h+='<td style="padding:4px 6px;border:1px solid #e0e0e0;text-align:right">'+(m.retailPrice?m.retailPrice.toLocaleString():'')+'</td>';
+    ['110K','90K','61K','37K'].forEach(tier=>{
+      const v=t[tier]?t[tier]['기변']||0:0;
+      h+='<td style="padding:4px 6px;border:1px solid #e0e0e0;text-align:right">'+(v?v.toLocaleString():'-')+'</td>';
+    });
+    h+='</tr>';
+  });
+  h+='</table></div>';
+  h+='<p style="color:#999;font-size:11px;margin:4px 0">* 기변 기준 표시. 전체 데이터는 localStorage에 저장됨</p>';
+  div.innerHTML=h;
+}
+
+// 드래그 & 드롭
+document.addEventListener('DOMContentLoaded',function(){
+  const zone=document.getElementById('priceDropZone');
+  if(!zone)return;
+  zone.addEventListener('dragover',function(e){e.preventDefault();zone.style.borderColor='#1a237e';zone.style.background='#e8eaf6';});
+  zone.addEventListener('dragleave',function(){zone.style.borderColor='#c5cae9';zone.style.background='#f8f9ff';});
+  zone.addEventListener('drop',function(e){e.preventDefault();zone.style.borderColor='#c5cae9';zone.style.background='#f8f9ff';handlePriceUpload(e.dataTransfer.files);});
+});
+// 저장된 단가표 복원
+try{const saved=localStorage.getItem('ktPriceData');if(saved)renderPriceTable(JSON.parse(saved));}catch(e){}
 
 </script>
 </body>
