@@ -1059,13 +1059,8 @@ function renderOcrResult(data){
 }
 
 // 페이지 초기화
-document.addEventListener('DOMContentLoaded',function(){
-  checkOcrReady();
-  switchTab('sales');
-});
-if(document.readyState!=='loading'){
-  checkOcrReady();
-}
+if(document.readyState!=="loading"){ checkOcrReady(); }
+else { document.addEventListener("DOMContentLoaded", function(){ checkOcrReady(); }); }
 
 </script>
 </body>
