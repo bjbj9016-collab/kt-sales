@@ -927,49 +927,90 @@ async function ocrLoadFolders(){
 // 고객 폴더 안 서류(JPG/JPEG/PNG) 자동 읽기 → Claude OCR
 function parseOcrText(text,folderName){
   var d=Object.assign({},parseName(folderName));
-  var lines=text.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
-  function nextVal(label){
-    for(var i=0;i<lines.length-1;i++){
-      if(lines[i].indexOf(label)>=0){
-        var same=lines[i].replace(label,'').replace(/[\[\]법인사업자본인번호:]/g,'').trim();
-        if(same&&same.length>1&&!/^[\s□\-|]/.test(same))return same;
-        for(var j=i+1;j<Math.min(i+4,lines.length);j++){
-          var v=lines[j].replace(/[\[\]]/g,'').trim();
-          if(v&&v.length>0&&!/^(법인|사업자|본인|번호|정보|고객|\[)/.test(v)&&v!==label)return v;
-        }
-      }
-    }
-    return '';
-  }
-  var name=nextVal('고객명');
-  if(name&&name!=='생년월일'&&name!=='법정대리인'&&!/미성년/.test(name)){d.custName=name;d['고객명']=name;}
-  var birthLines=text.match(/생년월일[\s\S]{0,50}?(\d{6})/);
-  if(birthLines){d.birth=birthLines[1];d['생년월일']=birthLines[1];}
+  // parseName에서 가져온 고객명을 기본값으로 유지 (OCR 이름 추출이 불안정하므로)
+  var baseNameFromFolder=d.custName||'';
+  
+  // 전화번호: 010으로 시작하는 11자리
   var phoneM=text.match(/(01[016789]\d{7,8})/);
   if(phoneM){var p=phoneM[1];d.phone=p.replace(/(\d{3})(\d{3,4})(\d{4})/,'$1-$2-$3');}
-  var modelM=text.match(/모델[\/색상:]*\s*\n?\s*([A-Z]{2}-?[A-Z0-9]+[A-Z0-9-]*)/i);
+  
+  // 생년월일: 6자리 숫자 (전화번호가 아닌 것)
+  var allNums=text.match(/(?<!\d)\d{6}(?!\d)/g)||[];
+  var phoneDigits=phoneM?phoneM[1]:'';
+  for(var n of allNums){
+    if(phoneDigits.indexOf(n)<0 && parseInt(n.substring(0,2))<=99 && parseInt(n.substring(2,4))>=1 && parseInt(n.substring(2,4))<=12){
+      d.birth=n; d['생년월일']=n; break;
+    }
+  }
+  
+  // 고객명: 폴더명에서 가져온 이름 우선 사용
+  if(baseNameFromFolder){d['고객명']=baseNameFromFolder;}
+  // OCR에서 이름 시도 (폴더명에 없는 경우만)
+  if(!baseNameFromFolder){
+    var nameM=text.match(/고객명[\s\S]{0,20}?([가-힯]{2,4})(?=\s|\n|$)/);
+    if(nameM){
+      var nm=nameM[1];
+      var labels=['생년월일','전화','법정대리','미성년','법인','사업자','고객','정보','번호'];
+      if(labels.indexOf(nm)<0){d.custName=nm;d['고객명']=nm;}
+    }
+  }
+  
+  // 모델코드: SM- 또는 AT- 로 시작
+  var modelM=text.match(/([A-Z]{2}-[A-Z0-9]+[A-Z0-9K-]*)/i);
   if(modelM)d.model=modelM[1];
+  
+  // 일련번호: 5-15자리 숫자/영문 (전화번호, 생년월일, 유심번호 제외)
   var serialM=text.match(/일련번호[:\s]*\n?\s*([A-Z0-9]{5,15})/i);
   if(serialM)d.serial=serialM[1];
-  var planM=text.match(/요금제\s*\n?\s*([^\n]{2,30})/);
-  if(planM){var pv=planM[1].trim();if(pv&&!/^(일|정보|변경)$/.test(pv)&&pv.length>2)d.plan=pv;}
-  var cardM=text.match(/카드명[:\s]*\n?\s*([가-힯]{2,4})/);
-  if(cardM)d.cardName=cardM[1];
-  var addonM=text.match(/부가서비스\s*\n?\s*([가-힯A-Za-z0-9\s]{2,20})/);
-  if(addonM){var av=addonM[1].trim();if(av&&av!=='유심번호')d.addonService=av;}
-  var insM=text.match(/보험\s*\n?\s*([가-힯]{2,6})/);
-  if(insM){var iv=insM[1];if(iv!=='미가입')d.insurance=iv;}
-  var termM=text.match(/약정[\/할부:\s]*(\d+)[\/](\d+)/);
-  if(termM){d.contractM=termM[1];d.installmentM=termM[2];}
+  
+  // 요금제: "요금제" 다음에 오는 한글+숫자+영문 조합 (알려진 요금제 패턴)
+  var planPatterns=[
+    /(베이직[\s]?\d+[A-Za-z]*)/,
+    /(유튜브[\s]?스페셜)/,
+    /(조이스[\s더]?더블유튜브[\s프]?프리미엄스)/,
+    /(슬림[\s]?\d+[A-Za-z]*)/,
+    /(다이렉트[\s]?\d+[A-Za-z]*)/
+  ];
+  for(var pp of planPatterns){
+    var pm=text.match(pp);
+    if(pm){d.plan=pm[1];break;}
+  }
+  
+  // 카드사: 알려진 카드사명 매칭
+  var cardNames=['신한','현대','BC','KB','삼성','우리','NH','롯데'];
+  var cardM=text.match(/카드명[:\s]*\n?\s*([가-힯A-Z]{2,4})/);
+  if(cardM&&cardNames.indexOf(cardM[1])>=0)d.cardName=cardM[1];
+  
+  // 부가서비스: "부가서비스" 또는 "필수팩" 키워드
+  if(text.indexOf('필수팩')>=0){
+    var packM=text.match(/(필수팩[\s]?[A-Za-z0-9]*)/);
+    if(packM)d.addonService=packM[1].trim();
+  }
+  
+  // 보험
+  if(text.indexOf('파손')>=0)d.insurance='파손보험';
+  
+  // 약정/할부
+  var termM=text.match(/(\d{1,2})\s*[\/]\s*(\d{1,2})/);
+  if(termM&&parseInt(termM[1])<=36&&parseInt(termM[2])<=48){d.contractM=termM[1];d.installmentM=termM[2];}
+  
+  // 담당자
   var sellerM=text.match(/담당자[:\s]*([가-힯]{2,4})/);
   if(sellerM){d.sellerName=sellerM[1];d.sellerDisplay=sellerM[1]+'(매)';d['판매자']=d.sellerDisplay;}
+  
+  // 가입유형
   if(text.indexOf('기기변경')>=0)d.activationType='기변';
   else if(text.indexOf('번호이동')>=0)d.activationType='번이';
   else if(text.indexOf('신규가입')>=0)d.activationType='신규';
-  else if(text.indexOf('전환신규')>=0)d.activationType='전환';
   d['가입유형']=d.activationType;
+  
+  // 선약/공시
   if(text.indexOf('선택약정')>=0)d.discountType='선약';
   else if(text.indexOf('공시')>=0||text.indexOf('공통지원')>=0)d.discountType='공시';
+  
+  // 원본 OCR 텍스트 첨부 (디버깅용)
+  d._ocrPreview=text.substring(0,500);
+  
   return d;
 }
 
