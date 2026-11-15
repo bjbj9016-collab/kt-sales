@@ -926,29 +926,50 @@ async function ocrLoadFolders(){
 
 // 고객 폴더 안 서류(JPG/JPEG/PNG) 자동 읽기 → Claude OCR
 function parseOcrText(text,folderName){
-  const d=Object.assign({},parseName(folderName));
-  d.고객명=d.custName;d.생년월일=d.birth;d.판매자=d.sellerDisplay;d.가입유형=d.activationType;
-  // 전화번호
-  const phoneM=text.match(/(?:핸드폰|개통|번호)[^0-9]*(01[016789]-?\d{3,4}-?\d{4})/);
-  if(phoneM)d.phone=phoneM[1].replace(/(\d{3})(\d{3,4})(\d{4})/,'$1-$2-$3');
-  // 생년월일 6자리
-  const birthM=text.match(/생년월일[^0-9]*(\d{6})/);
-  if(birthM){d.birth=birthM[1];d.생년월일=birthM[1];}
-  // 고객명
-  const nameM=text.match(/고객명[\s:]*([가-힣]{2,4})/);
-  if(nameM){d.custName=nameM[1];d.고객명=nameM[1];}
-  // 일련번호
-  const serialM=text.match(/일련번호[\s:]*([A-Z0-9]{5,15})/i);
-  if(serialM)d.serial=serialM[1];
-  // 모델
-  const modelM=text.match(/모델[\s/색상:]*([A-Z0-9]+)/i);
+  var d=Object.assign({},parseName(folderName));
+  var lines=text.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
+  function nextVal(label){
+    for(var i=0;i<lines.length-1;i++){
+      if(lines[i].indexOf(label)>=0){
+        var same=lines[i].replace(label,'').replace(/[\[\]법인사업자본인번호:]/g,'').trim();
+        if(same&&same.length>1&&!/^[\s□\-|]/.test(same))return same;
+        for(var j=i+1;j<Math.min(i+4,lines.length);j++){
+          var v=lines[j].replace(/[\[\]]/g,'').trim();
+          if(v&&v.length>0&&!/^(법인|사업자|본인|번호|정보|고객|\[)/.test(v)&&v!==label)return v;
+        }
+      }
+    }
+    return '';
+  }
+  var name=nextVal('고객명');
+  if(name&&name!=='생년월일'&&name!=='법정대리인'&&!/미성년/.test(name)){d.custName=name;d['고객명']=name;}
+  var birthLines=text.match(/생년월일[\s\S]{0,50}?(\d{6})/);
+  if(birthLines){d.birth=birthLines[1];d['생년월일']=birthLines[1];}
+  var phoneM=text.match(/(01[016789]\d{7,8})/);
+  if(phoneM){var p=phoneM[1];d.phone=p.replace(/(\d{3})(\d{3,4})(\d{4})/,'$1-$2-$3');}
+  var modelM=text.match(/모델[\/색상:]*\s*\n?\s*([A-Z]{2}-?[A-Z0-9]+[A-Z0-9-]*)/i);
   if(modelM)d.model=modelM[1];
-  // 요금제
-  const planM=text.match(/요금제[\s:]*((?:[가-힣]+\s*\d*[A-Z]*)+)/);
-  if(planM)d.plan=planM[1].trim();
-  // 카드
-  const cardM=text.match(/카드명[\s:]*([가-힣]+)/);
+  var serialM=text.match(/일련번호[:\s]*\n?\s*([A-Z0-9]{5,15})/i);
+  if(serialM)d.serial=serialM[1];
+  var planM=text.match(/요금제\s*\n?\s*([^\n]{2,30})/);
+  if(planM){var pv=planM[1].trim();if(pv&&!/^(일|정보|변경)$/.test(pv)&&pv.length>2)d.plan=pv;}
+  var cardM=text.match(/카드명[:\s]*\n?\s*([가-힯]{2,4})/);
   if(cardM)d.cardName=cardM[1];
+  var addonM=text.match(/부가서비스\s*\n?\s*([가-힯A-Za-z0-9\s]{2,20})/);
+  if(addonM){var av=addonM[1].trim();if(av&&av!=='유심번호')d.addonService=av;}
+  var insM=text.match(/보험\s*\n?\s*([가-힯]{2,6})/);
+  if(insM){var iv=insM[1];if(iv!=='미가입')d.insurance=iv;}
+  var termM=text.match(/약정[\/할부:\s]*(\d+)[\/](\d+)/);
+  if(termM){d.contractM=termM[1];d.installmentM=termM[2];}
+  var sellerM=text.match(/담당자[:\s]*([가-힯]{2,4})/);
+  if(sellerM){d.sellerName=sellerM[1];d.sellerDisplay=sellerM[1]+'(매)';d['판매자']=d.sellerDisplay;}
+  if(text.indexOf('기기변경')>=0)d.activationType='기변';
+  else if(text.indexOf('번호이동')>=0)d.activationType='번이';
+  else if(text.indexOf('신규가입')>=0)d.activationType='신규';
+  else if(text.indexOf('전환신규')>=0)d.activationType='전환';
+  d['가입유형']=d.activationType;
+  if(text.indexOf('선택약정')>=0)d.discountType='선약';
+  else if(text.indexOf('공시')>=0||text.indexOf('공통지원')>=0)d.discountType='공시';
   return d;
 }
 
