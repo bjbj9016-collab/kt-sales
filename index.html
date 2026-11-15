@@ -1002,6 +1002,15 @@ async function callClaude(imageContents, apiKey){
 - cardDiscount (카드할인 금액)
 - activationType (신규/기변/번이)
 - sellerDisplay (판매자명)
+- serial (기기일련번호 — 삼성은 뒤 7자리, 아이폰은 전체)
+- capacity (용량 예: 256G)
+- carrier (이전통신사 — 번이/MNP면 SKT/LG U+ 등)
+- contractMonths (약정개월)
+- installmentMonths (할부개월)
+- discountType (선택약정/공시지원금)
+- cardName (제휴카드사명 — 없으면 빈값)
+- addonService (부가서비스명)
+- insurance (보험명)
 - note (특이사항)
 JSON만 출력하세요.`}
       ]
@@ -1054,24 +1063,31 @@ function renderOcrResult(data){
   
   // 판매일보 폼에 자동 채우기
   const fieldMap={
-    'custName':'고객명','birth':'생년월일','phone':'개통번호',
-    'model':'단말기','plan':'요금제','planFee':'요금제금액',
-    'installment':'할부원금','installmentMonths':'할부개월',
-    'cardDiscount':'카드할인','activationType':'가입유형',
-    'sellerDisplay':'판매자','note':'특이사항',
-    '고객명':'고객명','생년월일':'생년월일','판매자':'판매자','가입유형':'가입유형'
+    'custName':'f_name','birth':'f_birth','phone':'f_phone',
+    'model':'f_model','plan':'f_plan','planFee':'f_tier',
+    'installment':'f_krBase','serial':'f_serial','capacity':'f_cap',
+    'carrier':'f_carrier','cardName':'f_card',
+    'addonService':'f_addon','insurance':'f_ins',
+    'sellerDisplay':'f_seller','note':'f_amMemo',
+    '고객명':'f_name','생년월일':'f_birth','판매자':'f_seller','가입유형':'f_act',
+    '개통번호':'f_phone','단말기':'f_model','일련번호':'f_serial'
   };
   
   for(const[k,v] of Object.entries(data)){
     if(!v) continue;
     const formField=fieldMap[k]||k;
-    const el=document.getElementById(formField)||document.querySelector('[name="'+formField+'"]');
+    const el=document.getElementById(formField);
     if(el){
       el.value=v;
       el.dispatchEvent(new Event('input',{bubbles:true}));
     }
   }
   
+  // select 필드 처리
+  if(data.activationType){const s=document.getElementById('f_act');if(s){for(let o of s.options)if(o.value===data.activationType){s.value=data.activationType;break;}}}
+  if(data.discountType){const dt=data.discountType;const s=document.getElementById('f_disc');if(s){if(dt.includes('선약')||dt.includes('선택'))s.value='선약';else if(dt.includes('공시'))s.value='공시';}}
+  if(data.contractMonths){const s=document.getElementById('f_contract');if(s){for(let o of s.options)if(o.value===String(data.contractMonths))s.value=String(data.contractMonths);}}
+  if(data.installmentMonths){const s=document.getElementById('f_inst');if(s){for(let o of s.options)if(o.value===String(data.installmentMonths))s.value=String(data.installmentMonths);}}
   // 글로벌 ocrData 저장
   window.lastOcrData=data;
   
