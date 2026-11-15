@@ -553,9 +553,15 @@ async function toggleAuth(){
 
 // Drive API: API 키 방식 (공개 폴더 조회용, 로그인 불필요)
 async function driveapi(url){
-  const apiKey=gv('apiKey');
-  const sep=url.includes('?')?'&':'?';
-  const r=await fetch(url+sep+'key='+encodeURIComponent(apiKey));
+  let r;
+  if(token){
+    const sep=url.includes('?')?'&':'?';
+    r=await fetch(url+sep+'access_token='+encodeURIComponent(token));
+  } else {
+    const apiKey=gv('apiKey');
+    const sep=url.includes('?')?'&':'?';
+    r=await fetch(url+sep+'key='+encodeURIComponent(apiKey));
+  }
   if(!r.ok)throw new Error(`Drive API ${r.status}: ${await r.text()}`);
   return r.json();
 }
@@ -942,7 +948,8 @@ async function analyzeCustomerFolder(folderId, folderName){
     const imageContents=[];
     for(const f of files.slice(0,3)){  // 최대 3장
       try{
-        const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media&key=${encodeURIComponent(apiKey)}`);
+        const dlUrl=`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`;
+        const r=token?await fetch(dlUrl+'&access_token='+encodeURIComponent(token)):await fetch(dlUrl+'&key='+encodeURIComponent(apiKey));
         if(!r.ok)continue;
         const blob=await r.blob();
         const b64=await blobToBase64(blob);
