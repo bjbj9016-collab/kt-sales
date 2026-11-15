@@ -596,7 +596,7 @@ async function loadFolders(){
       const p=parseName(f.name);
       const div=document.createElement('div');div.className='fi';
       div.innerHTML=`<div class="fi-name">${p.custName||f.name}</div><div class="fi-meta">${p.dateFormatted||''} · ${p.sellerDisplay||''} · ${p.modelRaw||''} · ${p.activationType||''} · ${p.discountType||''}</div>`;
-      div.onclick=()=>{document.querySelectorAll('.fi').forEach(x=>x.classList.remove('sel'));div.classList.add('sel');fillForm(p);document.getElementById('step2').style.display='block';document.getElementById('step2').scrollIntoView({behavior:'smooth'});analyzeCustomerFolder(f.id,f.name);};
+      div.onclick=()=>{document.querySelectorAll('.fi').forEach(x=>x.classList.remove('sel'));div.classList.add('sel');fillForm(p);document.getElementById('step2').style.display='block';document.getElementById('step2').scrollIntoView({behavior:'smooth'});showNote('folderNote','\ud83d\udcdd '+p.custName+' 서류 분석 중...','info');analyzeCustomerFolder(f.id,f.name);};
       list.appendChild(div);
     });
   }catch(e){showNote('folderNote','❌ '+e.message,'err');console.error('loadFolders error:',e);}
@@ -650,7 +650,14 @@ function parseName(name){
   const discountProgram=discountType==='선약'?'선택약정'+(contractM?contractM+'개월':''):(discountType==='공시'?'공시지원금':'');
   return{dateFormatted,custName,birth,sellerName,sellerType,sellerDisplay:sellerName+(sellerType?'('+sellerType+')':''),modelRaw,discountType,activationType,contractM,installmentM,cardName,cardNone,prevCarrier,discountProgram,raw:name};
 }
+function resetForm(){
+  const ids=['f_date','f_name','f_birth','f_phone','f_seller','f_carrier','f_model','f_cap','f_serial','f_card','f_plan','f_tier','f_krBase','f_krEx','f_krTotal','f_addon','f_ins','f_pcd','f_pct','f_aed','f_reb','f_am','f_amMemo'];
+  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['f_act','f_net','f_disc','f_contract','f_inst'].forEach(id=>{const el=document.getElementById(id);if(el)el.selectedIndex=0;});
+  document.getElementById('priceResult').innerHTML='';
+}
 function fillForm(p){
+  resetForm();
   const set=(id,v)=>{if(v!=null&&v!==''&&document.getElementById(id))document.getElementById(id).value=v;};
   set('f_date',p.dateFormatted);set('f_name',p.custName);set('f_birth',p.birth);
   set('f_seller',p.sellerDisplay);set('f_carrier',p.prevCarrier);
