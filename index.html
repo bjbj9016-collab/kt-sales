@@ -925,6 +925,33 @@ async function ocrLoadFolders(){
 }
 
 // 고객 폴더 안 서류(JPG/JPEG/PNG) 자동 읽기 → Claude OCR
+function parseOcrText(text,folderName){
+  const d=Object.assign({},parseName(folderName));
+  d.고객명=d.custName;d.생년월일=d.birth;d.판매자=d.sellerDisplay;d.가입유형=d.activationType;
+  // 전화번호
+  const phoneM=text.match(/(?:핸드폰|개통|번호)[^0-9]*(01[016789]-?\d{3,4}-?\d{4})/);
+  if(phoneM)d.phone=phoneM[1].replace(/(\d{3})(\d{3,4})(\d{4})/,'$1-$2-$3');
+  // 생년월일 6자리
+  const birthM=text.match(/생년월일[^0-9]*(\d{6})/);
+  if(birthM){d.birth=birthM[1];d.생년월일=birthM[1];}
+  // 고객명
+  const nameM=text.match(/고객명[\s:]*([가-힣]{2,4})/);
+  if(nameM){d.custName=nameM[1];d.고객명=nameM[1];}
+  // 일련번호
+  const serialM=text.match(/일련번호[\s:]*([A-Z0-9]{5,15})/i);
+  if(serialM)d.serial=serialM[1];
+  // 모델
+  const modelM=text.match(/모델[\s/색상:]*([A-Z0-9]+)/i);
+  if(modelM)d.model=modelM[1];
+  // 요금제
+  const planM=text.match(/요금제[\s:]*((?:[가-힣]+\s*\d*[A-Z]*)+)/);
+  if(planM)d.plan=planM[1].trim();
+  // 카드
+  const cardM=text.match(/카드명[\s:]*([가-힣]+)/);
+  if(cardM)d.cardName=cardM[1];
+  return d;
+}
+
 async function analyzeCustomerFolder(folderId, folderName){
   showNote('ocrNote','📂 폴더 안 서류를 읽는 중...','info');
   document.getElementById('ocrResult').style.display='block';
@@ -966,8 +993,43 @@ async function analyzeCustomerFolder(folderId, folderName){
     // 3. Claude API 호출
     const anthropicKey=gv('anthropicKey');
     if(!anthropicKey){
-      showNote('ocrNote','⚠️ Anthropic API 키가 없습니다. 설정 탭에서 입력하세요.\n수동으로 판매일보 탭을 사용하세요.','warn');
-      // 폴더 정보로만 form 채우기
+      // Anthropic 키 없이 Google Drive OCR 시도
+      if(token && imageContents.length>0){
+        showNote('ocrNote','📄 Google Drive에서 서류 텍스트 추출 중...','info');
+        try{
+          // Drive API로 이미지를 Google Doc으로 변환 (자동 OCR)
+          const ocrTexts=[];
+          for(const f of files.slice(0,3)){
+            try{
+              const copyResp=await fetch('https://www.googleapis.com/drive/v3/files/'+f.id+'/copy',{
+                method:'POST',
+                headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+                body:JSON.stringify({mimeType:'application/vnd.google-apps.document',name:'_ocr_temp_'+f.name})
+              });
+              if(copyResp.ok){
+                const copyData=await copyResp.json();
+                const docResp=await fetch('https://www.googleapis.com/drive/v3/files/'+copyData.id+'/export?mimeType=text/plain',{
+                  headers:{'Authorization':'Bearer '+token}
+                });
+                if(docResp.ok){
+                  const txt=await docResp.text();
+                  ocrTexts.push(txt);
+                }
+                // 임시 파일 삭제
+                fetch('https://www.googleapis.com/drive/v3/files/'+copyData.id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+              }
+            }catch(e){console.warn('OCR failed for',f.name,e);}
+          }
+          if(ocrTexts.length>0){
+            const allText=ocrTexts.join('\n---\n');
+            ocrData=parseOcrText(allText,folderName);
+            renderOcrResult(ocrData);
+            showNote('ocrNote','✅ Google Drive OCR 완료','ok');
+            return;
+          }
+        }catch(e){console.warn('Drive OCR error:',e);}
+      }
+      showNote('ocrNote','⚠️ Anthropic API 키가 없어 서류 자동 분석이 불가합니다.\n설정 탭에서 입력하거나, 시트 로그인 후 다시 시도하세요.','warn');
       ocrData=Object.assign({},parseName(folderName));
       ocrData.고객명=ocrData.custName;
       ocrData.생년월일=ocrData.birth;
