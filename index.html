@@ -588,22 +588,51 @@ async function loadFolders(){
 
 function parseName(name){
   const p=name.trim().split(/\s+/);
-  const dateStr=p[0]||'',custName=p[1]||'',birth=p[2]||'',sellerRaw=p[3]||'',modelRaw=p[4]||'';
-  const discountType=p[5]||'',activationType=p[6]||'',termStr=p[7]||'',cardRaw=p[8]||'';
-  const y='20'+dateStr.slice(0,2),m=parseInt(dateStr.slice(2,4)),d=parseInt(dateStr.slice(4,6));
-  const dateFormatted=`${y}. ${m}. ${d}`;
-  const tp=termStr.split('-'),contractM=tp[0]||'',installmentM=tp[1]||'';
-  let sellerName=sellerRaw,sellerType='';
-  if(sellerRaw.endsWith('매')){sellerName=sellerRaw.slice(0,-1);sellerType='매';}
-  else if(sellerRaw.endsWith('사')){sellerName=sellerRaw.slice(0,-1);sellerType='사';}
-  const cardNone=/^카드x$/i.test(cardRaw)||cardRaw.toLowerCase()==='x';
-  const cardName=cardNone?'':cardRaw;
+  // 날짜 필드 자동 감지: 첫 필드가 6자리 숫자면 날짜 포함, 아니면 날짜 없는 폴더
+  let offset=0, dateStr='';
+  let custName='',birth='',sellerRaw='',modelRaw='',discountType='',activationType='',termStr='',cardRaw='';
+  if(/^\d{6}$/.test(p[0]||'')){
+    // 표준 형식: YYMMDD 고객명 생년월일 담당자 단말 선약/공시 개통유형 약정-할부 카드
+    dateStr=p[0];
+    custName=p[1]||'';birth=p[2]||'';sellerRaw=p[3]||'';modelRaw=p[4]||'';
+    discountType=p[5]||'';activationType=p[6]||'';termStr=p[7]||'';cardRaw=p[8]||'';
+  } else {
+    // 날짜 없는 형식 — 유연한 필드 매칭
+    // 영문 이름(공백 포함) 감지
+    let nameEndIdx=1;
+    if(/^[A-Za-z]/.test(p[0]||'')){
+      for(let i=1;i<p.length;i++){if(/^\d/.test(p[i])){nameEndIdx=i;break;}}
+      if(nameEndIdx===1 && p.length>2) nameEndIdx=1;
+      custName=p.slice(0,nameEndIdx).join(' ');
+    } else {
+      custName=p[0]||'';
+    }
+    const rest=p.slice(nameEndIdx);
+    const actTypes=['기변','신규','mnp','전환','번이'];
+    const discTypes=['선약','공시'];
+    for(const f of rest){
+      if(!birth && /^\d{6}$/.test(f)){birth=f;}
+      else if(!activationType && actTypes.includes(f)){activationType=f;}
+      else if(!sellerRaw && (f.endsWith('매')||f.endsWith('사'))){sellerRaw=f;}
+      else if(!discountType && discTypes.includes(f)){discountType=f;}
+      else if(!termStr && /^\d+-\d+$/.test(f)){termStr=f;}
+      else if(!cardRaw && (/카드/.test(f)||/^(BC|KB|신한|현대|삼성|우리|NH|롯데|x)$/i.test(f))){cardRaw=f;}
+      else if(!modelRaw){modelRaw=f;}
+    }
+  }
+  let dateFormatted='';
+  if(dateStr){const y='20'+dateStr.slice(0,2),m=parseInt(dateStr.slice(2,4)),d=parseInt(dateStr.slice(4,6));dateFormatted=y+'. '+m+'. '+d;}
+  const tp=(termStr||'').split('-'),contractM=tp[0]||'',installmentM=tp[1]||'';
+  let sellerName=sellerRaw||'',sellerType='';
+  if(sellerRaw&&sellerRaw.endsWith('매')){sellerName=sellerRaw.slice(0,-1);sellerType='매';}
+  else if(sellerRaw&&sellerRaw.endsWith('사')){sellerName=sellerRaw.slice(0,-1);sellerType='사';}
+  const cardNone=/^카드x$/i.test(cardRaw||'')||(cardRaw||'').toLowerCase()==='x';
+  const cardName=cardNone?'':(cardRaw||'');
   let prevCarrier='';
   if(activationType==='기변')prevCarrier='기변';
-  const discountProgram=discountType==='선약'?`선택약정${contractM}개월`:(discountType==='공시'?'공시지원금':'');
-  return{dateFormatted,custName,birth,sellerName,sellerType,sellerDisplay:sellerName+(sellerType?`(${sellerType})`:''),modelRaw,discountType,activationType,contractM,installmentM,cardName,cardNone,prevCarrier,discountProgram,raw:name};
+  const discountProgram=discountType==='선약'?'선택약정'+(contractM?contractM+'개월':''):(discountType==='공시'?'공시지원금':'');
+  return{dateFormatted,custName,birth,sellerName,sellerType,sellerDisplay:sellerName+(sellerType?'('+sellerType+')':''),modelRaw,discountType,activationType,contractM,installmentM,cardName,cardNone,prevCarrier,discountProgram,raw:name};
 }
-
 function fillForm(p){
   const set=(id,v)=>{if(v!=null&&v!==''&&document.getElementById(id))document.getElementById(id).value=v;};
   set('f_date',p.dateFormatted);set('f_name',p.custName);set('f_birth',p.birth);
