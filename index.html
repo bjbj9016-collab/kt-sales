@@ -196,6 +196,12 @@ code{font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1
   <!-- STEP C: 추출 결과 + 3가지 작업 -->
   <div id="ocrResult" class="card" style="display:none">
     <div class="card-head">✅ 추출된 고객 정보</div>
+  <div id="folderNameOutput" style="display:none;margin-top:12px;padding:16px;background:#f0fdf4;border:2px solid #86efac;border-radius:12px">
+    <div style="font-weight:700;color:#166534;margin-bottom:8px">📁 추출된 폴더명</div>
+    <div id="folderNameValue" style="font-family:monospace;font-size:15px;padding:10px 12px;background:#fff;border:1px solid #d1d5db;border-radius:8px;word-break:break-all;user-select:all"></div>
+    <button class="btn btn-p" style="margin-top:8px;background:#16a34a" onclick="copyFolderName()">📋 폴더명 복사</button>
+    <div id="folderNameNote" style="margin-top:6px;font-size:12px;color:#666"></div>
+  </div>
     <div id="ocrNote" class="note" style="margin-bottom:10px"></div>
     <div id="ocrFields"></div>
 
@@ -1164,6 +1170,7 @@ function renderOcrResult(data){
   if(data.installmentMonths){const s=document.getElementById('f_inst');if(s){for(let o of s.options)if(o.value===String(data.installmentMonths))s.value=String(data.installmentMonths);}}
   // 글로벌 ocrData 저장
   window.lastOcrData=data;
+  generateFolderName();
   
   // OCR 결과 표시
   const resultDiv=document.getElementById('ocrResult');
@@ -1335,6 +1342,89 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 // 저장된 단가표 복원
 try{const saved=localStorage.getItem('ktPriceData');if(saved)renderPriceTable(JSON.parse(saved));}catch(e){}
+
+
+// 폴더명 추출 및 복사
+function generateFolderName(){
+  if(!ocrData) return '';
+  var d = ocrData;
+  // 날짜: 부모 폴더에서 추출 또는 오늘 날짜
+  var dateStr = d.dateFormatted ? d.dateFormatted.replace(/\D/g,'').substring(2) : '';
+  if(!dateStr || dateStr.length !== 6){
+    var now = new Date();
+    var y = String(now.getFullYear()).substring(2);
+    var m = String(now.getMonth()+1).padStart(2,'0');
+    var dd = String(now.getDate()).padStart(2,'0');
+    dateStr = y + m + dd;
+  }
+  var name = d.custName || d['고객명'] || '';
+  var birth = d.birth || d['생년월일'] || '';
+  // 담당자
+  var seller = '';
+  if(d.sellerName) seller = d.sellerName + '매';
+  else if(d.sellerDisplay) seller = d.sellerDisplay.replace(/[()]/g,'');
+  // 단말 약칭
+  var model = d.model || d.modelRaw || '';
+  // SM-A276K → a276, SM-A165NK → a165 등 약칭 변환
+  if(model.match(/^[A-Z]{2}-/i)){
+    var shortM = model.replace(/^[A-Z]{2}-/i,'').replace(/[NK]+$/i,'').toLowerCase();
+    model = shortM;
+  }
+  model = model.toLowerCase();
+  // 특수 모델 매핑 (폼폼푸린 등)
+  if(model.indexOf('a175')>=0 && model.indexOf('kp')>=0) model = 'a175폼폼';
+  
+  var disc = d.discountType || '';
+  if(disc === '선약') disc = '선약';
+  else if(disc === '공시') disc = '공시';
+  
+  var actType = d.activationType || '';
+  if(actType === '기변') actType = '기변';
+  else if(actType === '번이' || actType === 'MNP') actType = 'mnp';
+  else if(actType === '신규') actType = '신규';
+  else if(actType === '전환') actType = '전환';
+  
+  var term = '';
+  if(d.contractM && d.installmentM) term = d.contractM + '-' + d.installmentM;
+  else if(d.contractM) term = d.contractM + '-' + d.contractM;
+  
+  var card = d.cardName || '';
+  if(!card) card = '카드x';
+  
+  var parts = [dateStr, name, birth, seller, model, disc, actType, term, card];
+  // 빈 값 필터링 (확인필요 표시)
+  var missing = [];
+  var labels = ['날짜','고객명','생년월일','담당자','단말','선약/공시','개통유형','약정-할부','카드'];
+  parts = parts.map(function(v, i){
+    if(!v){missing.push(labels[i]);return '[확인필요]';}
+    return v;
+  });
+  
+  var folderName = parts.join(' ');
+  
+  // 표시
+  document.getElementById('folderNameOutput').style.display = 'block';
+  document.getElementById('folderNameValue').textContent = folderName;
+  var noteEl = document.getElementById('folderNameNote');
+  if(missing.length > 0){
+    noteEl.innerHTML = '⚠️ <b>확인 필요:</b> ' + missing.join(', ');
+    noteEl.style.color = '#b45309';
+  } else {
+    noteEl.innerHTML = '✅ 모든 필드 추출 완료';
+    noteEl.style.color = '#166534';
+  }
+  
+  return folderName;
+}
+
+function copyFolderName(){
+  var val = document.getElementById('folderNameValue').textContent;
+  navigator.clipboard.writeText(val).then(function(){
+    var btn = document.querySelector('#folderNameOutput button');
+    btn.textContent = '✅ 복사 완료!';
+    setTimeout(function(){btn.textContent='📋 폴더명 복사';},2000);
+  });
+}
 
 </script>
 </body>
