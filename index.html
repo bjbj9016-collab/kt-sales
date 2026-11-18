@@ -1039,7 +1039,7 @@ function parseOcrText(text, folderName){
   var dmM=text.match(/담당자[:\s]+([가-힣]{2,4})/);
   if(dmM&&!d.sellerName){d.sellerName=dmM[1];d.sellerDisplay=dmM[1]+'(매)';d['판매자']=d.sellerDisplay;}
   // 신청일/개통일
-  var dateM=text.match(/(\d{4})[\s.]*?(\d{1,2})[\s.]*?(\d{1,2})/);
+  var dateM=text.match(/(202\d)[\s.]*?(\d{1,2})[\s.]*?(\d{1,2})/);
   if(dateM){var yr=dateM[1],mo=dateM[2].padStart(2,'0'),dy=dateM[3].padStart(2,'0');
     d.dateFormatted=yr+'. '+parseInt(mo)+'. '+parseInt(dy);
     d.dateYMD=yr.substring(2)+mo+dy;}
