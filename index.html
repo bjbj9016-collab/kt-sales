@@ -363,7 +363,14 @@ code{font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1
     </div>
     <div class="field"><label>AM 사유</label><input id="f_amMemo" placeholder="카드 3만 + 필수팩 3만"></div>
 
-    <button class="btn btn-p" onclick="genOutput()">📋 출력 생성</button>
+    
+  <!-- 폴더명 출력 (판매일보 수동업로드용) -->
+  <div id="manualFolderNameOutput" style="display:none;margin:16px 0;padding:16px;background:#e8f5e9;border-radius:12px;border:2px solid #4caf50;">
+    <div style="font-weight:700;font-size:15px;margin-bottom:8px;">\ud83d\udcc2 \ucd94\ucd9c\ub41c \ud3f4\ub354\uba85</div>
+    <div id="manualFolderNameValue" style="font-family:monospace;font-size:14px;background:#fff;padding:12px;border-radius:8px;word-break:break-all;"></div>
+    <button onclick="var v=document.getElementById('manualFolderNameValue').textContent;navigator.clipboard.writeText(v).then(function(){showNote('manualOcrNote','\u2705 \ud3f4\ub354\uba85 \ubcf5\uc0ac\ub428!','ok');})" style="margin-top:8px;padding:8px 20px;background:#4caf50;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">\ud83d\udccb \ud3f4\ub354\uba85 \ubcf5\uc0ac</button>
+  </div>
+<button class="btn btn-p" onclick="genOutput()">📋 출력 생성</button>
   </div>
 
   <!-- STEP 3 -->
@@ -639,7 +646,17 @@ async function loadFolders(){
       const p=parseName(f.name);
       const div=document.createElement('div');div.className='fi';
       div.innerHTML=`<div class="fi-name">${p.custName||f.name}</div><div class="fi-meta">${p.dateFormatted||''} · ${p.sellerDisplay||''} · ${p.modelRaw||''} · ${p.activationType||''} · ${p.discountType||''}</div>`;
-      div.onclick=()=>{document.querySelectorAll('.fi').forEach(x=>x.classList.remove('sel'));div.classList.add('sel');fillForm(p);document.getElementById('step2').style.display='block';document.getElementById('step2').scrollIntoView({behavior:'smooth'});showNote('folderNote','\ud83d\udcdd '+p.custName+' 서류 분석 중...','info');analyzeCustomerFolder(f.id,f.name);};
+      div.onclick=()=>{document.querySelectorAll('.fi').forEach(x=>x.classList.remove('sel'));div.classList.add('sel');fillForm(p);document.getElementById('step2').style.display='block';document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+        // 판매일보 탭 폴더명 표시
+        var mfno = document.getElementById('manualFolderNameOutput');
+        var mfnv = document.getElementById('manualFolderNameValue');
+        if(mfno && mfnv && typeof generateFolderName === 'function') {
+          var fnEl = document.getElementById('folderNameValue');
+          if(fnEl && fnEl.textContent) {
+            mfnv.textContent = fnEl.textContent;
+            mfno.style.display = 'block';
+          }
+        }showNote('folderNote','\ud83d\udcdd '+p.custName+' 서류 분석 중...','info');analyzeCustomerFolder(f.id,f.name);};
       list.appendChild(div);
     });
   }catch(e){showNote('folderNote','❌ '+e.message,'err');console.error('loadFolders error:',e);}
@@ -1576,6 +1593,16 @@ async function analyzeManualFiles() {
         showNote('manualOcrNote','\u2705 Claude AI \ubd84\uc11d \uc644\ub8cc! \ucd94\ucd9c\ub41c \ud56d\ubaa9: '+Object.keys(parsed).length+'\uac1c','ok');
         document.getElementById('step2').style.display='block';
         document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+        // 판매일보 탭 폴더명 표시
+        var mfno = document.getElementById('manualFolderNameOutput');
+        var mfnv = document.getElementById('manualFolderNameValue');
+        if(mfno && mfnv && typeof generateFolderName === 'function') {
+          var fnEl = document.getElementById('folderNameValue');
+          if(fnEl && fnEl.textContent) {
+            mfnv.textContent = fnEl.textContent;
+            mfno.style.display = 'block';
+          }
+        }
       } else {
         showNote('manualOcrNote','\u26a0\ufe0f \ubd84\uc11d \uacb0\uacfc\ub97c \ud30c\uc2f1\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. \uc751\ub2f5: '+text.substring(0,100),'warn');
       }
@@ -1623,6 +1650,16 @@ async function analyzeManualFiles() {
       showNote('manualOcrNote','\u2705 OCR \ubd84\uc11d \uc644\ub8cc!','ok');
       document.getElementById('step2').style.display='block';
       document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+        // 판매일보 탭 폴더명 표시
+        var mfno = document.getElementById('manualFolderNameOutput');
+        var mfnv = document.getElementById('manualFolderNameValue');
+        if(mfno && mfnv && typeof generateFolderName === 'function') {
+          var fnEl = document.getElementById('folderNameValue');
+          if(fnEl && fnEl.textContent) {
+            mfnv.textContent = fnEl.textContent;
+            mfno.style.display = 'block';
+          }
+        }
     } else {
       showNote('manualOcrNote','\u26a0\ufe0f OCR \uc2e4\ud328. \ud14d\uc2a4\ud2b8\ub97c \ucd94\ucd9c\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.','warn');
     }
@@ -1851,6 +1888,16 @@ async function analyzeManualFiles() {
         showNote('manualOcrNote','\u2705 Claude AI \ubd84\uc11d \uc644\ub8cc! \ucd94\ucd9c\ub41c \ud56d\ubaa9: '+Object.keys(parsed).length+'\uac1c','ok');
         document.getElementById('step2').style.display='block';
         document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+        // 판매일보 탭 폴더명 표시
+        var mfno = document.getElementById('manualFolderNameOutput');
+        var mfnv = document.getElementById('manualFolderNameValue');
+        if(mfno && mfnv && typeof generateFolderName === 'function') {
+          var fnEl = document.getElementById('folderNameValue');
+          if(fnEl && fnEl.textContent) {
+            mfnv.textContent = fnEl.textContent;
+            mfno.style.display = 'block';
+          }
+        }
       } else {
         showNote('manualOcrNote','\u26a0\ufe0f \ubd84\uc11d \uacb0\uacfc\ub97c \ud30c\uc2f1\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. \uc751\ub2f5: '+text.substring(0,100),'warn');
       }
@@ -1898,6 +1945,16 @@ async function analyzeManualFiles() {
       showNote('manualOcrNote','\u2705 OCR \ubd84\uc11d \uc644\ub8cc!','ok');
       document.getElementById('step2').style.display='block';
       document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+        // 판매일보 탭 폴더명 표시
+        var mfno = document.getElementById('manualFolderNameOutput');
+        var mfnv = document.getElementById('manualFolderNameValue');
+        if(mfno && mfnv && typeof generateFolderName === 'function') {
+          var fnEl = document.getElementById('folderNameValue');
+          if(fnEl && fnEl.textContent) {
+            mfnv.textContent = fnEl.textContent;
+            mfno.style.display = 'block';
+          }
+        }
     } else {
       showNote('manualOcrNote','\u26a0\ufe0f OCR \uc2e4\ud328. \ud14d\uc2a4\ud2b8\ub97c \ucd94\ucd9c\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.','warn');
     }
