@@ -256,7 +256,36 @@ code{font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1
   </div>
 
   <!-- STEP 2 -->
-  <div id="step2" class="card" style="display:none">
+  
+<!-- 서류 직접 업로드 -->
+<div id="manualUpload" class="card" style="display:none">
+  <div class="card-head">📤 서류 직접 업로드</div>
+  <p style="color:#666;font-size:13px;margin:0 0 12px">개통안내서와 가입신청서를 직접 업로드하면 자동으로 정보를 추출합니다.</p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <label style="font-weight:600;font-size:13px;color:#3949ab;display:block;margin-bottom:6px">📄 개통안내서</label>
+      <div id="dropGuide" style="border:2px dashed #c5cae9;border-radius:10px;padding:20px 12px;text-align:center;cursor:pointer;background:#f8f9ff;transition:all .2s" onclick="document.getElementById('fileGuide').click()">
+        <div style="font-size:28px">📃</div>
+        <div style="font-size:12px;color:#666;margin-top:4px">클릭 또는 드래그</div>
+      </div>
+      <input type="file" id="fileGuide" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="handleManualFile(this,'guide')">
+      <div id="fileGuideInfo" style="font-size:12px;color:#666;margin-top:4px"></div>
+    </div>
+    <div style="flex:1;min-width:200px">
+      <label style="font-weight:600;font-size:13px;color:#e65100;display:block;margin-bottom:6px">✍️ 가입신청서</label>
+      <div id="dropApp" style="border:2px dashed #ffcc80;border-radius:10px;padding:20px 12px;text-align:center;cursor:pointer;background:#fffdf5;transition:all .2s" onclick="document.getElementById('fileApp').click()">
+        <div style="font-size:28px">📝</div>
+        <div style="font-size:12px;color:#666;margin-top:4px">클릭 또는 드래그</div>
+      </div>
+      <input type="file" id="fileApp" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="handleManualFile(this,'app')">
+      <div id="fileAppInfo" style="font-size:12px;color:#666;margin-top:4px"></div>
+    </div>
+  </div>
+  <button class="btn btn-p" id="btnManualOcr" style="margin-top:12px;display:none" onclick="analyzeManualFiles()">🔍 서류 분석 시작</button>
+  <div id="manualOcrNote" class="note" style="display:none"></div>
+</div>
+
+<div id="step2" class="card" style="display:none">
     <div class="card-head">👤 Step 2 — 고객 정보</div>
 
     <div class="sec">기본</div>
@@ -523,6 +552,7 @@ function switchTab(id,el){
 }
 
 function useManual(){
+  document.getElementById('manualUpload').style.display='block';
   manualMode=true;
   document.getElementById('loginWall').style.display='none';
   document.getElementById('step1').style.display='block';
@@ -532,6 +562,7 @@ function useManual(){
 }
 
 function useDrive(){
+  document.getElementById('manualUpload').style.display='block';
   document.getElementById('loginWall').style.display='none';
   document.getElementById('step1').style.display='block';
 }
@@ -1425,6 +1456,158 @@ function copyFolderName(){
     setTimeout(function(){btn.textContent='📋 폴더명 복사';},2000);
   });
 }
+
+
+// 서류 직접 업로드 기능
+var manualFiles = {guide: null, app: null};
+
+function handleManualFile(input, type) {
+  var f = input.files[0];
+  if(!f) return;
+  if(f.size > 10*1024*1024){alert('파일 크기가 10MB를 초과합니다.');return;}
+  manualFiles[type] = f;
+  var infoEl = document.getElementById(type==='guide'?'fileGuideInfo':'fileAppInfo');
+  infoEl.innerHTML = '✅ ' + f.name + ' (' + Math.round(f.size/1024) + 'KB)';
+  var dropEl = document.getElementById(type==='guide'?'dropGuide':'dropApp');
+  dropEl.style.borderColor = type==='guide'?'#3949ab':'#e65100';
+  dropEl.style.background = type==='guide'?'#e8eaf6':'#fff3e0';
+  dropEl.querySelector('div:first-child').textContent = '✅';
+  // 버튼 표시
+  if(manualFiles.guide || manualFiles.app) {
+    document.getElementById('btnManualOcr').style.display = 'block';
+  }
+  input.value = '';
+}
+
+async function analyzeManualFiles() {
+  var files = [];
+  if(manualFiles.guide) files.push({file: manualFiles.guide, type: 'guide'});
+  if(manualFiles.app) files.push({file: manualFiles.app, type: 'app'});
+  if(!files.length){alert('파일을 먼저 업로드하세요.');return;}
+  
+  var btn = document.getElementById('btnManualOcr');
+  btn.innerHTML = '<span class="spin"></span> 분석 중...';
+  btn.disabled = true;
+  showNote('manualOcrNote','🔍 서류를 분석하고 있습니다...','info');
+  
+  try {
+    var ocrTexts = [];
+    for(var item of files) {
+      showNote('manualOcrNote','🔍 ' + item.file.name + ' OCR 처리 중...','info');
+      var b64 = await blobToBase64(item.file);
+      
+      // Google Drive에 임시 업로드 → Google Doc 변환 (OCR)
+      if(!token){
+        showNote('manualOcrNote','⚠️ 시트 로그인이 필요합니다.','warn');
+        btn.textContent='🔍 서류 분석 시작';btn.disabled=false;return;
+      }
+      
+      // 파일 업로드
+      var mimeType = item.file.type || 'image/jpeg';
+      var metadata = {name: '_upload_ocr_' + Date.now(), mimeType: 'application/vnd.google-apps.document'};
+      var form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
+      form.append('file', item.file);
+      
+      var upResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: {'Authorization': 'Bearer ' + token},
+        body: form
+      });
+      
+      if(!upResp.ok){
+        console.warn('Upload failed:', upResp.status, await upResp.text());
+        continue;
+      }
+      var upData = await upResp.json();
+      
+      // 텍스트 추출
+      var txtResp = await fetch('https://www.googleapis.com/drive/v3/files/' + upData.id + '/export?mimeType=text/plain', {
+        headers: {'Authorization': 'Bearer ' + token}
+      });
+      if(txtResp.ok) {
+        var txt = await txtResp.text();
+        if(txt.trim()) ocrTexts.push(txt);
+      }
+      // 임시 파일 삭제
+      fetch('https://www.googleapis.com/drive/v3/files/' + upData.id, {
+        method: 'DELETE', headers: {'Authorization': 'Bearer ' + token}
+      }).catch(function(){});
+    }
+    
+    if(ocrTexts.length > 0) {
+      // 파싱 및 병합
+      var merged = {};
+      var folderName = document.getElementById('f_name')?.value || '';
+      for(var k = 0; k < ocrTexts.length; k++) {
+        var partial = parseOcrText(ocrTexts[k], folderName);
+        console.log('ManualOCR[' + k + ']:', JSON.stringify(partial).substring(0, 300));
+        for(var key in partial) {
+          if(key === 'raw' || key === '_ocrPreview') continue;
+          if(!merged[key] && partial[key]) merged[key] = partial[key];
+        }
+      }
+      ocrData = merged;
+      renderOcrResult(merged);
+      // 폴더명도 생성
+      if(typeof generateFolderName === 'function') generateFolderName();
+      // 폼에도 채우기
+      fillFormFromOcr(merged);
+      showNote('manualOcrNote','✅ 분석 완료! (' + ocrTexts.length + '장 처리)','ok');
+      document.getElementById('step2').style.display = 'block';
+      document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+    } else {
+      showNote('manualOcrNote','⚠️ OCR 추출 실패. 다른 파일을 시도해보세요.','warn');
+    }
+  } catch(e) {
+    console.error('analyzeManualFiles error:', e);
+    showNote('manualOcrNote','❌ 오류: ' + e.message,'err');
+  }
+  btn.textContent = '🔍 서류 분석 시작';
+  btn.disabled = false;
+}
+
+function fillFormFromOcr(d) {
+  if(!d) return;
+  var map = {
+    'custName':'f_name','birth':'f_birth','phone':'f_phone',
+    'model':'f_model','plan':'f_plan','serial':'f_serial',
+    'cardName':'f_card','sellerDisplay':'f_seller','retailPrice':'f_cap',
+    'addonService':'f_addon','insurance':'f_ins',
+    '고객명':'f_name','생년월일':'f_birth',
+    '판매자':'f_seller'
+  };
+  for(var k in d) {
+    var fid = map[k];
+    if(fid && d[k]) {
+      var el = document.getElementById(fid);
+      if(el) { el.value = d[k]; el.dispatchEvent(new Event('input',{bubbles:true})); }
+    }
+  }
+  // select 필드
+  if(d.activationType){var s=document.getElementById('f_act');if(s){for(var o of s.options)if(o.value===d.activationType){s.value=d.activationType;break;}}}
+  if(d.discountType){var s2=document.getElementById('f_disc');if(s2){if(d.discountType==='선약')s2.value='선약';else if(d.discountType==='공시')s2.value='공시';}}
+  if(d.contractM){var s3=document.getElementById('f_contract');if(s3){for(var o of s3.options)if(o.value===d.contractM){s3.value=d.contractM;break;}}}
+  if(d.installmentM){var s4=document.getElementById('f_inst');if(s4){for(var o of s4.options)if(o.value===d.installmentM){s4.value=d.installmentM;break;}}}
+}
+
+// 드래그&드롭
+['dropGuide','dropApp'].forEach(function(id){
+  var zone = document.getElementById(id);
+  if(!zone) return;
+  var type = id === 'dropGuide' ? 'guide' : 'app';
+  zone.addEventListener('dragover',function(e){e.preventDefault();zone.style.opacity='0.7';});
+  zone.addEventListener('dragleave',function(){zone.style.opacity='1';});
+  zone.addEventListener('drop',function(e){
+    e.preventDefault();zone.style.opacity='1';
+    var f = e.dataTransfer.files[0];
+    if(f){
+      var input = document.getElementById(type==='guide'?'fileGuide':'fileApp');
+      var dt = new DataTransfer();dt.items.add(f);input.files = dt.files;
+      handleManualFile(input, type);
+    }
+  });
+});
 
 </script>
 </body>
