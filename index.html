@@ -1512,29 +1512,36 @@ async function analyzeManualFiles() {
   var files = [];
   if(manualFiles.guide) files.push({file: manualFiles.guide, type: 'guide'});
   if(manualFiles.app) files.push({file: manualFiles.app, type: 'app'});
-  if(!files.length){alert('파일을 먼저 업로드하세요.');return;}
+  if(!files.length){showNote('manualOcrNote','\u26a0\ufe0f \ud30c\uc77c\uc744 \uba3c\uc800 \uc5c5\ub85c\ub4dc\ud558\uc138\uc694.','warn');return;}
   
   var btn = document.getElementById('btnManualOcr');
-  btn.innerHTML = '<span class="spin"></span> 분석 중...';
+  btn.innerHTML = '<span class="spin"></span> \ubd84\uc11d \uc911...';
   btn.disabled = true;
   
   var anthropicKey = gv('anthropicKey');
   
   if(anthropicKey) {
-    // Claude API 방식 (Google 로그인 불필요)
-    showNote('manualOcrNote','🤖 Claude AI로 서류 분석 중...','info');
+    showNote('manualOcrNote','\ud83e\udd16 Claude AI\ub85c \uc11c\ub958 \ubd84\uc11d \uc911... ('+files.length+'\uac1c \ud30c\uc77c)','info');
     try {
       var imageContents = [];
       for(var item of files) {
+        showNote('manualOcrNote','\ud83d\udcc4 '+item.file.name+' \ubcc0\ud658 \uc911...','info');
         var b64 = await blobToBase64(item.file);
+        if(!b64) {
+          showNote('manualOcrNote','\u274c '+item.file.name+' \ud30c\uc77c \ubcc0\ud658 \uc2e4\ud328','err');
+          btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;return;
+        }
         var mimeType = item.file.type || 'image/jpeg';
         if(item.file.name.match(/\.pdf$/i)) mimeType = 'application/pdf';
-        imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
+        var contentType = (mimeType === 'application/pdf') ? 'document' : 'image';
+        imageContents.push({type:contentType,source:{type:'base64',media_type:mimeType,data:b64}});
       }
+      
+      showNote('manualOcrNote','\ud83d\ude80 Claude API \ud638\ucd9c \uc911... (\uc751\ub2f5 \ub300\uae30 10~30\ucd08)','info');
       
       var messages = [{role:'user',content:[
         ...imageContents,
-        {type:'text',text:'\uC774 \uC774\uBBF8\uC9C0\uB294 KT \uD1B5\uC2E0 \uAC00\uC785\uC2E0\uCCAD\uC11C \uB610\uB294 \uAC1C\uD1B5\uC548\uB0B4\uC11C\uC785\uB2C8\uB2E4.\n\uB2E4\uC74C \uD56D\uBAA9\uC744 JSON\uC73C\uB85C \uCD94\uCD9C\uD574\uC8FC\uC138\uC694:\n- custName (\uACE0\uAC1D\uBA85)\n- birth (\uC0DD\uB144\uC6D4\uC77C 6\uC790\uB9AC YYMMDD)\n- phone (\uAC1C\uD1B5\uBC88\uD638 010-XXXX-XXXX)\n- model (\uB2E8\uB9D0\uAE30 \uBAA8\uB378\uCF54\uB4DC SM-XXXX)\n- plan (\uC694\uAE08\uC81C\uBA85)\n- planFee (\uC694\uAE08\uC81C \uC6D4\uC815\uC561)\n- serial (\uAE30\uAE30\uC77C\uB828\uBC88\uD638)\n- capacity (\uC6A9\uB7C9 256G \uB4F1)\n- retailPrice (\uCD9C\uACE0\uAC00)\n- subsidy (\uACF5\uC2DC\uC9C0\uC6D0\uAE08)\n- installment (\uD560\uBD80\uC6D0\uAE08)\n- contractMonths (\uC57D\uC815\uAC1C\uC6D4)\n- installmentMonths (\uD560\uBD80\uAC1C\uC6D4)\n- discountType (\uC120\uD0DD\uC57D\uC815/\uACF5\uC2DC\uC9C0\uC6D0\uAE08)\n- cardName (\uC81C\uD734\uCE74\uB4DC\uC0AC\uBA85)\n- activationType (\uC2E0\uADDC/\uAE30\uBCC0/\uBC88\uC774/\uC804\uD658)\n- sellerName (\uD310\uB9E4\uC790\uBA85)\n- addonService (\uBD80\uAC00\uC11C\uBE44\uC2A4\uBA85)\n- insurance (\uBCF4\uD5D8\uBA85)\n- welfareType (\uBCF5\uC9C0\uD560\uC778 \uC720\uD615: \uC0DD\uACC4/\uAE30\uCD08\uC5F0\uAE08/\uC7A5\uC560\uC778)\n- welfareDiscount (\uBCF5\uC9C0\uD560\uC778 \uAE08\uC561)\n- openDate (\uAC1C\uD1B5\uC77C YYYY.MM.DD)\nJSON\uB9CC \uCD9C\uB825\uD558\uC138\uC694.'}
+        {type:'text',text:'\uc774 \uc774\ubbf8\uc9c0\ub294 KT \ud1b5\uc2e0 \uac00\uc785\uc2e0\uccad\uc11c \ub610\ub294 \uac1c\ud1b5\uc548\ub0b4\uc11c\uc785\ub2c8\ub2e4.\n\ub2e4\uc74c \ud56d\ubaa9\uc744 JSON\uc73c\ub85c \ucd94\ucd9c\ud574\uc8fc\uc138\uc694:\n- custName (\uace0\uac1d\uba85)\n- birth (\uc0dd\ub144\uc6d4\uc77c 6\uc790\ub9ac YYMMDD)\n- phone (\uac1c\ud1b5\ubc88\ud638 010-XXXX-XXXX)\n- model (\ub2e8\ub9d0\uae30 \ubaa8\ub378\ucf54\ub4dc SM-XXXX)\n- plan (\uc694\uae08\uc81c\uba85)\n- planFee (\uc694\uae08\uc81c \uc6d4\uc815\uc561)\n- serial (\uae30\uae30\uc77c\ub828\ubc88\ud638)\n- capacity (\uc6a9\ub7c9 256G \ub4f1)\n- retailPrice (\ucd9c\uace0\uac00)\n- subsidy (\uacf5\uc2dc\uc9c0\uc6d0\uae08)\n- installment (\ud560\ubd80\uc6d0\uae08)\n- contractMonths (\uc57d\uc815\uac1c\uc6d4)\n- installmentMonths (\ud560\ubd80\uac1c\uc6d4)\n- discountType (\uc120\ud0dd\uc57d\uc815/\uacf5\uc2dc\uc9c0\uc6d0\uae08)\n- cardName (\uc81c\ud734\uce74\ub4dc\uc0ac\uba85)\n- activationType (\uc2e0\uaddc/\uae30\ubcc0/\ubc88\uc774/\uc804\ud658)\n- sellerName (\ud310\ub9e4\uc790\uba85)\n- addonService (\ubd80\uac00\uc11c\ube44\uc2a4\uba85)\n- insurance (\ubcf4\ud5d8\uba85)\n- welfareType (\ubcf5\uc9c0\ud560\uc778 \uc720\ud615: \uc0dd\uacc4/\uae30\ucd08\uc5f0\uae08/\uc7a5\uc560\uc778)\n- welfareDiscount (\ubcf5\uc9c0\ud560\uc778 \uae08\uc561)\n- openDate (\uac1c\ud1b5\uc77c YYYY.MM.DD)\nJSON\ub9cc \ucd9c\ub825\ud558\uc138\uc694.'}
       ]}];
       
       var apiResp = await fetch('https://api.anthropic.com/v1/messages',{
@@ -1551,10 +1558,11 @@ async function analyzeManualFiles() {
       if(!apiResp.ok){
         var errText = await apiResp.text();
         console.error('Claude API error:',apiResp.status,errText);
-        showNote('manualOcrNote','\u26a0\ufe0f Claude API \uC624\uB958: '+apiResp.status+'. \uC124\uC815 \uD0ED\uC5D0\uC11C API \uD0A4\uB97C \uD655\uC778\uD558\uC138\uC694.','warn');
-        btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;return;
+        showNote('manualOcrNote','\u274c Claude API \uc624\ub958 ('+apiResp.status+'). \uc124\uc815 \ud0ed\uc5d0\uc11c API \ud0a4\ub97c \ud655\uc778\ud558\uc138\uc694. '+errText.substring(0,100),'err');
+        btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;return;
       }
       
+      showNote('manualOcrNote','\ud83d\udce8 \uc751\ub2f5 \uc218\uc2e0, \ud30c\uc2f1 \uc911...','info');
       var result = await apiResp.json();
       var text = (result.content||[]).map(function(c){return c.text||'';}).join('');
       var jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -1562,43 +1570,41 @@ async function analyzeManualFiles() {
       if(jsonMatch){
         var parsed = JSON.parse(jsonMatch[0]);
         ocrData = parsed;
-        // \uD3FC \uCC44\uC6B0\uAE30
         fillFormFromOcr(parsed);
-        renderOcrResult(parsed);
+        if(typeof renderOcrResult==='function') renderOcrResult(parsed);
         if(typeof generateFolderName==='function') generateFolderName();
-        showNote('manualOcrNote','\u2705 Claude AI \uBD84\uC11D \uC644\uB8CC!','ok');
+        showNote('manualOcrNote','\u2705 Claude AI \ubd84\uc11d \uc644\ub8cc! \ucd94\ucd9c\ub41c \ud56d\ubaa9: '+Object.keys(parsed).length+'\uac1c','ok');
         document.getElementById('step2').style.display='block';
         document.getElementById('step2').scrollIntoView({behavior:'smooth'});
       } else {
-        showNote('manualOcrNote','\u26a0\ufe0f \uBD84\uC11D \uACB0\uACFC\uB97C \uD30C\uC2F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.','warn');
+        showNote('manualOcrNote','\u26a0\ufe0f \ubd84\uc11d \uacb0\uacfc\ub97c \ud30c\uc2f1\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. \uc751\ub2f5: '+text.substring(0,100),'warn');
       }
-      btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+      btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;
       return;
     } catch(e) {
       console.error('Claude analysis error:',e);
-      showNote('manualOcrNote','\u274c Claude \uC624\uB958: '+e.message,'err');
-      btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+      showNote('manualOcrNote','\u274c Claude \uc624\ub958: '+e.message,'err');
+      btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;
       return;
     }
   }
   
-  // Google Drive OCR \uBC29\uC2DD (\uD3B4\uBC31)
   if(!token){
-    showNote('manualOcrNote','\u26a0\ufe0f \uC124\uC815 \uD0ED\uC5D0\uC11C Anthropic API \uD0A4\uB97C \uC785\uB825\uD558\uAC70\uB098, \uC2DC\uD2B8 \uB85C\uADF8\uC778\uC744 \uD574\uC8FC\uC138\uC694.','warn');
-    btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;return;
+    showNote('manualOcrNote','\u26a0\ufe0f \uc124\uc815 \ud0ed\uc5d0\uc11c Anthropic API \ud0a4\ub97c \uc785\ub825\ud558\uac70\ub098, \uc2dc\ud2b8 \ub85c\uadf8\uc778\uc744 \ud574\uc8fc\uc138\uc694.','warn');
+    btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;return;
   }
-  showNote('manualOcrNote','\uD83D\uDD0D Google Drive OCR\uB85C \uBD84\uC11D \uC911...','info');
+  showNote('manualOcrNote','\ud83d\udd0d Google Drive OCR\ub85c \ubd84\uc11d \uc911...','info');
   try {
     var ocrTexts = [];
     for(var item of files) {
-      showNote('manualOcrNote','\uD83D\uDD0D '+item.file.name+' OCR \uCC98\uB9AC \uC911...','info');
+      showNote('manualOcrNote','\ud83d\udd0d '+item.file.name+' OCR \ucc98\ub9ac \uc911...','info');
       var metadata = {name:'_upload_ocr_'+Date.now(),mimeType:'application/vnd.google-apps.document'};
       var form = new FormData();
       form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));
       form.append('file',item.file);
       var upResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
         method:'POST',headers:{'Authorization':'Bearer '+token},body:form});
-      if(!upResp.ok) continue;
+      if(!upResp.ok) {showNote('manualOcrNote','\u26a0\ufe0f '+item.file.name+' \uc5c5\ub85c\ub4dc \uc2e4\ud328','warn');continue;}
       var upData = await upResp.json();
       var txtResp = await fetch('https://www.googleapis.com/drive/v3/files/'+upData.id+'/export?mimeType=text/plain',{
         headers:{'Authorization':'Bearer '+token}});
@@ -1611,18 +1617,19 @@ async function analyzeManualFiles() {
         var partial=parseOcrText(ocrTexts[k],folderName);
         for(var key in partial){if(key==='raw'||key==='_ocrPreview')continue;if(!merged[key]&&partial[key])merged[key]=partial[key];}
       }
-      ocrData=merged;fillFormFromOcr(merged);renderOcrResult(merged);
+      ocrData=merged;fillFormFromOcr(merged);
+      if(typeof renderOcrResult==='function') renderOcrResult(merged);
       if(typeof generateFolderName==='function')generateFolderName();
-      showNote('manualOcrNote','\u2705 OCR \uBD84\uC11D \uC644\uB8CC!','ok');
+      showNote('manualOcrNote','\u2705 OCR \ubd84\uc11d \uc644\ub8cc!','ok');
       document.getElementById('step2').style.display='block';
       document.getElementById('step2').scrollIntoView({behavior:'smooth'});
     } else {
-      showNote('manualOcrNote','\u26a0\ufe0f OCR \uC2E4\uD328.','warn');
+      showNote('manualOcrNote','\u26a0\ufe0f OCR \uc2e4\ud328. \ud14d\uc2a4\ud2b8\ub97c \ucd94\ucd9c\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.','warn');
     }
   } catch(e) {
-    showNote('manualOcrNote','\u274c \uC624\uB958: '+e.message,'err');
+    showNote('manualOcrNote','\u274c \uc624\ub958: '+e.message,'err');
   }
-  btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+  btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;
 }
 
 function fillFormFromOcr(d) {
@@ -1780,29 +1787,36 @@ async function analyzeManualFiles() {
   var files = [];
   if(manualFiles.guide) files.push({file: manualFiles.guide, type: 'guide'});
   if(manualFiles.app) files.push({file: manualFiles.app, type: 'app'});
-  if(!files.length){alert('파일을 먼저 업로드하세요.');return;}
+  if(!files.length){showNote('manualOcrNote','\u26a0\ufe0f \ud30c\uc77c\uc744 \uba3c\uc800 \uc5c5\ub85c\ub4dc\ud558\uc138\uc694.','warn');return;}
   
   var btn = document.getElementById('btnManualOcr');
-  btn.innerHTML = '<span class="spin"></span> 분석 중...';
+  btn.innerHTML = '<span class="spin"></span> \ubd84\uc11d \uc911...';
   btn.disabled = true;
   
   var anthropicKey = gv('anthropicKey');
   
   if(anthropicKey) {
-    // Claude API 방식 (Google 로그인 불필요)
-    showNote('manualOcrNote','🤖 Claude AI로 서류 분석 중...','info');
+    showNote('manualOcrNote','\ud83e\udd16 Claude AI\ub85c \uc11c\ub958 \ubd84\uc11d \uc911... ('+files.length+'\uac1c \ud30c\uc77c)','info');
     try {
       var imageContents = [];
       for(var item of files) {
+        showNote('manualOcrNote','\ud83d\udcc4 '+item.file.name+' \ubcc0\ud658 \uc911...','info');
         var b64 = await blobToBase64(item.file);
+        if(!b64) {
+          showNote('manualOcrNote','\u274c '+item.file.name+' \ud30c\uc77c \ubcc0\ud658 \uc2e4\ud328','err');
+          btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;return;
+        }
         var mimeType = item.file.type || 'image/jpeg';
         if(item.file.name.match(/\.pdf$/i)) mimeType = 'application/pdf';
-        imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
+        var contentType = (mimeType === 'application/pdf') ? 'document' : 'image';
+        imageContents.push({type:contentType,source:{type:'base64',media_type:mimeType,data:b64}});
       }
+      
+      showNote('manualOcrNote','\ud83d\ude80 Claude API \ud638\ucd9c \uc911... (\uc751\ub2f5 \ub300\uae30 10~30\ucd08)','info');
       
       var messages = [{role:'user',content:[
         ...imageContents,
-        {type:'text',text:'\uC774 \uC774\uBBF8\uC9C0\uB294 KT \uD1B5\uC2E0 \uAC00\uC785\uC2E0\uCCAD\uC11C \uB610\uB294 \uAC1C\uD1B5\uC548\uB0B4\uC11C\uC785\uB2C8\uB2E4.\n\uB2E4\uC74C \uD56D\uBAA9\uC744 JSON\uC73C\uB85C \uCD94\uCD9C\uD574\uC8FC\uC138\uC694:\n- custName (\uACE0\uAC1D\uBA85)\n- birth (\uC0DD\uB144\uC6D4\uC77C 6\uC790\uB9AC YYMMDD)\n- phone (\uAC1C\uD1B5\uBC88\uD638 010-XXXX-XXXX)\n- model (\uB2E8\uB9D0\uAE30 \uBAA8\uB378\uCF54\uB4DC SM-XXXX)\n- plan (\uC694\uAE08\uC81C\uBA85)\n- planFee (\uC694\uAE08\uC81C \uC6D4\uC815\uC561)\n- serial (\uAE30\uAE30\uC77C\uB828\uBC88\uD638)\n- capacity (\uC6A9\uB7C9 256G \uB4F1)\n- retailPrice (\uCD9C\uACE0\uAC00)\n- subsidy (\uACF5\uC2DC\uC9C0\uC6D0\uAE08)\n- installment (\uD560\uBD80\uC6D0\uAE08)\n- contractMonths (\uC57D\uC815\uAC1C\uC6D4)\n- installmentMonths (\uD560\uBD80\uAC1C\uC6D4)\n- discountType (\uC120\uD0DD\uC57D\uC815/\uACF5\uC2DC\uC9C0\uC6D0\uAE08)\n- cardName (\uC81C\uD734\uCE74\uB4DC\uC0AC\uBA85)\n- activationType (\uC2E0\uADDC/\uAE30\uBCC0/\uBC88\uC774/\uC804\uD658)\n- sellerName (\uD310\uB9E4\uC790\uBA85)\n- addonService (\uBD80\uAC00\uC11C\uBE44\uC2A4\uBA85)\n- insurance (\uBCF4\uD5D8\uBA85)\n- welfareType (\uBCF5\uC9C0\uD560\uC778 \uC720\uD615: \uC0DD\uACC4/\uAE30\uCD08\uC5F0\uAE08/\uC7A5\uC560\uC778)\n- welfareDiscount (\uBCF5\uC9C0\uD560\uC778 \uAE08\uC561)\n- openDate (\uAC1C\uD1B5\uC77C YYYY.MM.DD)\nJSON\uB9CC \uCD9C\uB825\uD558\uC138\uC694.'}
+        {type:'text',text:'\uc774 \uc774\ubbf8\uc9c0\ub294 KT \ud1b5\uc2e0 \uac00\uc785\uc2e0\uccad\uc11c \ub610\ub294 \uac1c\ud1b5\uc548\ub0b4\uc11c\uc785\ub2c8\ub2e4.\n\ub2e4\uc74c \ud56d\ubaa9\uc744 JSON\uc73c\ub85c \ucd94\ucd9c\ud574\uc8fc\uc138\uc694:\n- custName (\uace0\uac1d\uba85)\n- birth (\uc0dd\ub144\uc6d4\uc77c 6\uc790\ub9ac YYMMDD)\n- phone (\uac1c\ud1b5\ubc88\ud638 010-XXXX-XXXX)\n- model (\ub2e8\ub9d0\uae30 \ubaa8\ub378\ucf54\ub4dc SM-XXXX)\n- plan (\uc694\uae08\uc81c\uba85)\n- planFee (\uc694\uae08\uc81c \uc6d4\uc815\uc561)\n- serial (\uae30\uae30\uc77c\ub828\ubc88\ud638)\n- capacity (\uc6a9\ub7c9 256G \ub4f1)\n- retailPrice (\ucd9c\uace0\uac00)\n- subsidy (\uacf5\uc2dc\uc9c0\uc6d0\uae08)\n- installment (\ud560\ubd80\uc6d0\uae08)\n- contractMonths (\uc57d\uc815\uac1c\uc6d4)\n- installmentMonths (\ud560\ubd80\uac1c\uc6d4)\n- discountType (\uc120\ud0dd\uc57d\uc815/\uacf5\uc2dc\uc9c0\uc6d0\uae08)\n- cardName (\uc81c\ud734\uce74\ub4dc\uc0ac\uba85)\n- activationType (\uc2e0\uaddc/\uae30\ubcc0/\ubc88\uc774/\uc804\ud658)\n- sellerName (\ud310\ub9e4\uc790\uba85)\n- addonService (\ubd80\uac00\uc11c\ube44\uc2a4\uba85)\n- insurance (\ubcf4\ud5d8\uba85)\n- welfareType (\ubcf5\uc9c0\ud560\uc778 \uc720\ud615: \uc0dd\uacc4/\uae30\ucd08\uc5f0\uae08/\uc7a5\uc560\uc778)\n- welfareDiscount (\ubcf5\uc9c0\ud560\uc778 \uae08\uc561)\n- openDate (\uac1c\ud1b5\uc77c YYYY.MM.DD)\nJSON\ub9cc \ucd9c\ub825\ud558\uc138\uc694.'}
       ]}];
       
       var apiResp = await fetch('https://api.anthropic.com/v1/messages',{
@@ -1819,10 +1833,11 @@ async function analyzeManualFiles() {
       if(!apiResp.ok){
         var errText = await apiResp.text();
         console.error('Claude API error:',apiResp.status,errText);
-        showNote('manualOcrNote','\u26a0\ufe0f Claude API \uC624\uB958: '+apiResp.status+'. \uC124\uC815 \uD0ED\uC5D0\uC11C API \uD0A4\uB97C \uD655\uC778\uD558\uC138\uC694.','warn');
-        btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;return;
+        showNote('manualOcrNote','\u274c Claude API \uc624\ub958 ('+apiResp.status+'). \uc124\uc815 \ud0ed\uc5d0\uc11c API \ud0a4\ub97c \ud655\uc778\ud558\uc138\uc694. '+errText.substring(0,100),'err');
+        btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;return;
       }
       
+      showNote('manualOcrNote','\ud83d\udce8 \uc751\ub2f5 \uc218\uc2e0, \ud30c\uc2f1 \uc911...','info');
       var result = await apiResp.json();
       var text = (result.content||[]).map(function(c){return c.text||'';}).join('');
       var jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -1830,43 +1845,41 @@ async function analyzeManualFiles() {
       if(jsonMatch){
         var parsed = JSON.parse(jsonMatch[0]);
         ocrData = parsed;
-        // \uD3FC \uCC44\uC6B0\uAE30
         fillFormFromOcr(parsed);
-        renderOcrResult(parsed);
+        if(typeof renderOcrResult==='function') renderOcrResult(parsed);
         if(typeof generateFolderName==='function') generateFolderName();
-        showNote('manualOcrNote','\u2705 Claude AI \uBD84\uC11D \uC644\uB8CC!','ok');
+        showNote('manualOcrNote','\u2705 Claude AI \ubd84\uc11d \uc644\ub8cc! \ucd94\ucd9c\ub41c \ud56d\ubaa9: '+Object.keys(parsed).length+'\uac1c','ok');
         document.getElementById('step2').style.display='block';
         document.getElementById('step2').scrollIntoView({behavior:'smooth'});
       } else {
-        showNote('manualOcrNote','\u26a0\ufe0f \uBD84\uC11D \uACB0\uACFC\uB97C \uD30C\uC2F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.','warn');
+        showNote('manualOcrNote','\u26a0\ufe0f \ubd84\uc11d \uacb0\uacfc\ub97c \ud30c\uc2f1\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. \uc751\ub2f5: '+text.substring(0,100),'warn');
       }
-      btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+      btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;
       return;
     } catch(e) {
       console.error('Claude analysis error:',e);
-      showNote('manualOcrNote','\u274c Claude \uC624\uB958: '+e.message,'err');
-      btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+      showNote('manualOcrNote','\u274c Claude \uc624\ub958: '+e.message,'err');
+      btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;
       return;
     }
   }
   
-  // Google Drive OCR \uBC29\uC2DD (\uD3B4\uBC31)
   if(!token){
-    showNote('manualOcrNote','\u26a0\ufe0f \uC124\uC815 \uD0ED\uC5D0\uC11C Anthropic API \uD0A4\uB97C \uC785\uB825\uD558\uAC70\uB098, \uC2DC\uD2B8 \uB85C\uADF8\uC778\uC744 \uD574\uC8FC\uC138\uC694.','warn');
-    btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;return;
+    showNote('manualOcrNote','\u26a0\ufe0f \uc124\uc815 \ud0ed\uc5d0\uc11c Anthropic API \ud0a4\ub97c \uc785\ub825\ud558\uac70\ub098, \uc2dc\ud2b8 \ub85c\uadf8\uc778\uc744 \ud574\uc8fc\uc138\uc694.','warn');
+    btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;return;
   }
-  showNote('manualOcrNote','\uD83D\uDD0D Google Drive OCR\uB85C \uBD84\uC11D \uC911...','info');
+  showNote('manualOcrNote','\ud83d\udd0d Google Drive OCR\ub85c \ubd84\uc11d \uc911...','info');
   try {
     var ocrTexts = [];
     for(var item of files) {
-      showNote('manualOcrNote','\uD83D\uDD0D '+item.file.name+' OCR \uCC98\uB9AC \uC911...','info');
+      showNote('manualOcrNote','\ud83d\udd0d '+item.file.name+' OCR \ucc98\ub9ac \uc911...','info');
       var metadata = {name:'_upload_ocr_'+Date.now(),mimeType:'application/vnd.google-apps.document'};
       var form = new FormData();
       form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));
       form.append('file',item.file);
       var upResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
         method:'POST',headers:{'Authorization':'Bearer '+token},body:form});
-      if(!upResp.ok) continue;
+      if(!upResp.ok) {showNote('manualOcrNote','\u26a0\ufe0f '+item.file.name+' \uc5c5\ub85c\ub4dc \uc2e4\ud328','warn');continue;}
       var upData = await upResp.json();
       var txtResp = await fetch('https://www.googleapis.com/drive/v3/files/'+upData.id+'/export?mimeType=text/plain',{
         headers:{'Authorization':'Bearer '+token}});
@@ -1879,18 +1892,19 @@ async function analyzeManualFiles() {
         var partial=parseOcrText(ocrTexts[k],folderName);
         for(var key in partial){if(key==='raw'||key==='_ocrPreview')continue;if(!merged[key]&&partial[key])merged[key]=partial[key];}
       }
-      ocrData=merged;fillFormFromOcr(merged);renderOcrResult(merged);
+      ocrData=merged;fillFormFromOcr(merged);
+      if(typeof renderOcrResult==='function') renderOcrResult(merged);
       if(typeof generateFolderName==='function')generateFolderName();
-      showNote('manualOcrNote','\u2705 OCR \uBD84\uC11D \uC644\uB8CC!','ok');
+      showNote('manualOcrNote','\u2705 OCR \ubd84\uc11d \uc644\ub8cc!','ok');
       document.getElementById('step2').style.display='block';
       document.getElementById('step2').scrollIntoView({behavior:'smooth'});
     } else {
-      showNote('manualOcrNote','\u26a0\ufe0f OCR \uC2E4\uD328.','warn');
+      showNote('manualOcrNote','\u26a0\ufe0f OCR \uc2e4\ud328. \ud14d\uc2a4\ud2b8\ub97c \ucd94\ucd9c\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.','warn');
     }
   } catch(e) {
-    showNote('manualOcrNote','\u274c \uC624\uB958: '+e.message,'err');
+    showNote('manualOcrNote','\u274c \uc624\ub958: '+e.message,'err');
   }
-  btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+  btn.textContent='\ud83d\udd0d \uc11c\ub958 \ubd84\uc11d \uc2dc\uc791';btn.disabled=false;
 }
 
 function fillFormFromOcr(d) {
