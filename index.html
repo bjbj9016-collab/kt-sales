@@ -963,57 +963,86 @@ async function ocrLoadFolders(){
 
 // 고객 폴더 안 서류(JPG/JPEG/PNG) 자동 읽기 → Claude OCR
 function parseOcrText(text, folderName){
-  var d=parseName(folderName);
+  var d=parseName(folderName||'');
   var lines=text.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
-  // 고객명: 명의자 우선
+  // 명의자 > 고객명 줄 아래 순수 한글이름
   var nameM=text.match(/명의자[:\s]+([가-힣]{2,4})/);
   if(nameM){d.custName=nameM[1];d['고객명']=nameM[1];}
-  else{for(var i=0;i<lines.length-1;i++){if(lines[i].indexOf('고객명')>=0){for(var j=i+1;j<Math.min(i+3,lines.length);j++){var v=lines[j].trim();var skip=['생년월일','전화번호','핸드폰','법인','사업자','미성년','법정대리인','정보','고객','번호','통화','문자'];var isS=skip.some(function(s){return v.indexOf(s)>=0;});if(!isS&&/^[가-힣]{2,4}$/.test(v)){d.custName=v;d['고객명']=v;break;}}break;}}}
+  else{for(var i=0;i<lines.length-1;i++){if(lines[i].indexOf('고객명')>=0||lines[i].indexOf('고 객 명')>=0){for(var j=i+1;j<Math.min(i+3,lines.length);j++){var v=lines[j].trim();var skip=['생년월일','전화번호','핸드폰','법인','사업자','미성년','법정대리인','정보','고객','번호','통화','문자','남','여'];var isS=skip.some(function(s){return v.indexOf(s)>=0;});if(!isS&&/^[가-힣]{2,4}$/.test(v)){d.custName=v;d['고객명']=v;break;}}break;}}}
+  // 고 객 명 (띄어쓰기 형태)
+  var nameM2=text.match(/고\s*객\s*명[^가-힣]*([가-힯]{2,4})/);
+  if(nameM2&&!d.custName){d.custName=nameM2[1];d['고객명']=nameM2[1];}
   // 전화번호
-  var phoneM=text.match(/(01[016789]\d{7,8})/);
-  if(phoneM)d.phone=phoneM[1].replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3');
-  if(!d.phone){var pm2=text.match(/(01[016789]-\d{3,4}-\d{4})/);if(pm2)d.phone=pm2[1];}
+  var phoneM=text.match(/(01[016789][\-]?\d{3,4}[\-]?\d{4})/);
+  if(phoneM){var p=phoneM[1].replace(/\D/g,'');d.phone=p.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3');}
   // 생년월일
   var nums=text.match(/(?<!\d)\d{6}(?!\d)/g)||[];
-  var pDig=phoneM?phoneM[1]:'';
+  var pDig=phoneM?phoneM[1].replace(/\D/g,''):'';
   for(var n of nums){if(pDig.indexOf(n)<0){var mm=parseInt(n.substring(2,4));if(mm>=1&&mm<=12){d.birth=n;d['생년월일']=n;break;}}}
   // 가입유형
-  if(text.indexOf('기기변경')>=0)d.activationType='기변';
+  if(text.indexOf('기기변경')>=0||text.match(/✓.*기변/)||text.match(/기변.*✓/))d.activationType='기변';
   else if(text.indexOf('번호이동')>=0)d.activationType='번이';
   else if(text.indexOf('신규가입')>=0)d.activationType='신규';
   else if(text.indexOf('전환신규')>=0)d.activationType='전환';
   d['가입유형']=d.activationType;
-  // 요금제
-  var plans=[/베이직\s?\d+[A-Za-z]*/,/유튜브\s?스페셜/,/슬림\s?\d+/,/다이렉트\s?\d+/];
-  for(var pp of plans){var pm=text.match(pp);if(pm){d.plan=pm[0];break;}}
-  // 모델코드
-  var mm2=text.match(/([A-Z]{2}-[A-Z]\d{2,4}[A-Z0-9K-]*)/i);
-  if(mm2)d.model=mm2[1];
-  if(!d.model){var mm3=text.match(/\b(A\d{3}|S\d{3}|M\d{3})\b/);if(mm3)d.model=mm3[1];}
+  // 요금제 (다양한 패턴)
+  var planPats=[/베이직\s?\d+[A-Za-z+딩]*/,/유튜브\s?스페셜/,/슬림\s?\d+/,/다이렉트\s?\d+/,/초이스.*유튜브.*프리미엄/];
+  for(var pp of planPats){var pm=text.match(pp);if(pm){d.plan=pm[0];break;}}
+  // 요금제 변경 패턴: "-> 베이직 70GB"
+  var planChg=text.match(/[\->]+\s*(베이직\s?\d+[A-Za-z+딩]*)/);
+  if(planChg)d.plan=planChg[1];
+  // 모델코드 SM-xxxx
+  var mm=text.match(/([A-Z]{2}-[A-Z]\d{2,4}[A-Z0-9K-]*)/i);
+  if(mm)d.model=mm[1];
+  if(!d.model){var mm3=text.match(/\b([A-Z]\d{3}[A-Z]?)\b/);if(mm3)d.model=mm3[1];}
   // 일련번호
   var serM=text.match(/일련번호[:\s]*\n?\s*([A-Z0-9]{5,15})/i);
   if(serM)d.serial=serM[1];
   // 출고가
-  var prM=text.match(/출고가?\s*\n?\s*([\d,]+)/);
-  if(prM)d.retailPrice=prM[1].replace(/,/g,'');
+  var prM=text.match(/출\s*고\s*가[\s\n]*([한\d,]+)/);
+  if(prM)d.retailPrice=prM[1].replace(/[^\d]/g,'');
+  // 공시지원금
+  var gongsiM=text.match(/공통지원금[\s\n]*([한\d,]+)/);
+  if(gongsiM)d.subsidy=gongsiM[1].replace(/[^\d]/g,'');
+  if(!d.subsidy){var gs2=text.match(/공\s*통\s*지\s*원\s*금[\s]*(\d[\d,]*)/);if(gs2)d.subsidy=gs2[1].replace(/,/g,'');}
   // 카드
-  var cM=text.match(/(?:카드할인|제휴카드|카드명|카드는)\s*[\[\(:\s]*\s*(신한|현대|BC|KB|삼성|우리|NH|롯데)/);
+  var cM=text.match(/(?:카드할인|제휴카드|카드명|카드는)[\s\[\(:\s]*(\u신한|현대|BC|KB|삼성|우리|NH|롯데)/);
   if(cM)d.cardName=cM[1];
-  // 약정/할부
+  // 카드명: 직접 매칭
+  if(!d.cardName){var cM2=text.match(/카드명[\s:]*([\u신한현대삼성우림NHKB롯데]{2,4})/);if(cM2)d.cardName=cM2[1];}
+  // 약정
   var ctM=text.match(/약정[:\s]*(\d{1,2})\s*개월/);if(ctM)d.contractM=ctM[1];
+  var ctM2=text.match(/약정[/할부:\s]*(\d{1,2})\s*[/]\s*(\d{1,2})/);
+  if(ctM2){d.contractM=ctM2[1];d.installmentM=ctM2[2];}
+  // 할부
   var inM=text.match(/할부[:\s]*(\d{1,2})\s*개월/);if(inM)d.installmentM=inM[1];
-  // 선약/공시
-  if(text.indexOf('요금할인')>=0||text.indexOf('선택약정')>=0)d.discountType='선약';
-  else if(/공시지원금\s+[1-9]/.test(text))d.discountType='공시';
+  // 선약/공시 판별 개선
+  if(text.match(/✓.*공통지원/)||text.match(/공통지원.*✓/)||text.indexOf('✔.*공통')>=0)d.discountType='공시';
+  else if(text.match(/✓.*선택약정/)||text.indexOf('요금할인')>=0||text.indexOf('선택약정')>=0)d.discountType='선약';
+  // 공시지원금 금액이 0보다 크면 공시
+  if(d.subsidy&&parseInt(d.subsidy)>0)d.discountType='공시';
   // 부가서비스
   if(text.indexOf('필수팩')>=0)d.addonService='필수팩';
+  var adM=text.match(/부가서비스[\s\[\]]*([가-힣A-Za-z0-9\s]{2,15})/);
+  if(adM){var av=adM[1].trim();if(av&&av!=='X'&&av.length>1)d.addonService=av;}
   // 보험
   if(text.indexOf('파손')>=0&&text.indexOf('미가입')<0)d.insurance='파손보험';
+  // 복지할인
+  var welM=text.match(/복지할인[\s\[]*(\d[\d,]*)/);
+  if(welM)d.welfareDiscount=welM[1].replace(/,/g,'');
+  if(text.indexOf('생계')>=0){d.welfareType='생계';var wm2=text.match(/생계[\s]*(\d[\d,]*)/);if(wm2)d.welfareDiscount=wm2[1].replace(/,/g,'');}
+  else if(text.indexOf('기초연금')>=0)d.welfareType='기초연금';
+  else if(text.indexOf('장애인')>=0)d.welfareType='장애인';
   // 판매자
   var slM=text.match(/판매자[:\s]+([가-힣]{2,4})/);
   if(slM){d.sellerName=slM[1];d.sellerDisplay=slM[1]+'(매)';d['판매자']=d.sellerDisplay;}
   var dmM=text.match(/담당자[:\s]+([가-힣]{2,4})/);
   if(dmM&&!d.sellerName){d.sellerName=dmM[1];d.sellerDisplay=dmM[1]+'(매)';d['판매자']=d.sellerDisplay;}
+  // 신청일/개통일
+  var dateM=text.match(/(\d{4})[\s.]*?(\d{1,2})[\s.]*?(\d{1,2})/);
+  if(dateM){var yr=dateM[1],mo=dateM[2].padStart(2,'0'),dy=dateM[3].padStart(2,'0');
+    d.dateFormatted=yr+'. '+parseInt(mo)+'. '+parseInt(dy);
+    d.dateYMD=yr.substring(2)+mo+dy;}
   d._ocrPreview=text.substring(0,300);
   return d;
 }
