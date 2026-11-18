@@ -1517,83 +1517,380 @@ async function analyzeManualFiles() {
   var btn = document.getElementById('btnManualOcr');
   btn.innerHTML = '<span class="spin"></span> 분석 중...';
   btn.disabled = true;
-  showNote('manualOcrNote','🔍 서류를 분석하고 있습니다...','info');
   
+  var anthropicKey = gv('anthropicKey');
+  
+  if(anthropicKey) {
+    // Claude API 방식 (Google 로그인 불필요)
+    showNote('manualOcrNote','🤖 Claude AI로 서류 분석 중...','info');
+    try {
+      var imageContents = [];
+      for(var item of files) {
+        var b64 = await blobToBase64(item.file);
+        var mimeType = item.file.type || 'image/jpeg';
+        if(item.file.name.match(/\.pdf$/i)) mimeType = 'application/pdf';
+        imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
+      }
+      
+      var messages = [{role:'user',content:[
+        ...imageContents,
+        {type:'text',text:'\uC774 \uC774\uBBF8\uC9C0\uB294 KT \uD1B5\uC2E0 \uAC00\uC785\uC2E0\uCCAD\uC11C \uB610\uB294 \uAC1C\uD1B5\uC548\uB0B4\uC11C\uC785\uB2C8\uB2E4.\n\uB2E4\uC74C \uD56D\uBAA9\uC744 JSON\uC73C\uB85C \uCD94\uCD9C\uD574\uC8FC\uC138\uC694:\n- custName (\uACE0\uAC1D\uBA85)\n- birth (\uC0DD\uB144\uC6D4\uC77C 6\uC790\uB9AC YYMMDD)\n- phone (\uAC1C\uD1B5\uBC88\uD638 010-XXXX-XXXX)\n- model (\uB2E8\uB9D0\uAE30 \uBAA8\uB378\uCF54\uB4DC SM-XXXX)\n- plan (\uC694\uAE08\uC81C\uBA85)\n- planFee (\uC694\uAE08\uC81C \uC6D4\uC815\uC561)\n- serial (\uAE30\uAE30\uC77C\uB828\uBC88\uD638)\n- capacity (\uC6A9\uB7C9 256G \uB4F1)\n- retailPrice (\uCD9C\uACE0\uAC00)\n- subsidy (\uACF5\uC2DC\uC9C0\uC6D0\uAE08)\n- installment (\uD560\uBD80\uC6D0\uAE08)\n- contractMonths (\uC57D\uC815\uAC1C\uC6D4)\n- installmentMonths (\uD560\uBD80\uAC1C\uC6D4)\n- discountType (\uC120\uD0DD\uC57D\uC815/\uACF5\uC2DC\uC9C0\uC6D0\uAE08)\n- cardName (\uC81C\uD734\uCE74\uB4DC\uC0AC\uBA85)\n- activationType (\uC2E0\uADDC/\uAE30\uBCC0/\uBC88\uC774/\uC804\uD658)\n- sellerName (\uD310\uB9E4\uC790\uBA85)\n- addonService (\uBD80\uAC00\uC11C\uBE44\uC2A4\uBA85)\n- insurance (\uBCF4\uD5D8\uBA85)\n- welfareType (\uBCF5\uC9C0\uD560\uC778 \uC720\uD615: \uC0DD\uACC4/\uAE30\uCD08\uC5F0\uAE08/\uC7A5\uC560\uC778)\n- welfareDiscount (\uBCF5\uC9C0\uD560\uC778 \uAE08\uC561)\n- openDate (\uAC1C\uD1B5\uC77C YYYY.MM.DD)\nJSON\uB9CC \uCD9C\uB825\uD558\uC138\uC694.'}
+      ]}];
+      
+      var apiResp = await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'x-api-key':anthropicKey,
+          'anthropic-version':'2023-06-01',
+          'anthropic-dangerous-direct-browser-access':'true'
+        },
+        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:messages})
+      });
+      
+      if(!apiResp.ok){
+        var errText = await apiResp.text();
+        console.error('Claude API error:',apiResp.status,errText);
+        showNote('manualOcrNote','\u26a0\ufe0f Claude API \uC624\uB958: '+apiResp.status+'. \uC124\uC815 \uD0ED\uC5D0\uC11C API \uD0A4\uB97C \uD655\uC778\uD558\uC138\uC694.','warn');
+        btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;return;
+      }
+      
+      var result = await apiResp.json();
+      var text = (result.content||[]).map(function(c){return c.text||'';}).join('');
+      var jsonMatch = text.match(/\{[\s\S]*\}/);
+      
+      if(jsonMatch){
+        var parsed = JSON.parse(jsonMatch[0]);
+        ocrData = parsed;
+        // \uD3FC \uCC44\uC6B0\uAE30
+        fillFormFromOcr(parsed);
+        renderOcrResult(parsed);
+        if(typeof generateFolderName==='function') generateFolderName();
+        showNote('manualOcrNote','\u2705 Claude AI \uBD84\uC11D \uC644\uB8CC!','ok');
+        document.getElementById('step2').style.display='block';
+        document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+      } else {
+        showNote('manualOcrNote','\u26a0\ufe0f \uBD84\uC11D \uACB0\uACFC\uB97C \uD30C\uC2F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.','warn');
+      }
+      btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+      return;
+    } catch(e) {
+      console.error('Claude analysis error:',e);
+      showNote('manualOcrNote','\u274c Claude \uC624\uB958: '+e.message,'err');
+      btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+      return;
+    }
+  }
+  
+  // Google Drive OCR \uBC29\uC2DD (\uD3B4\uBC31)
+  if(!token){
+    showNote('manualOcrNote','\u26a0\ufe0f \uC124\uC815 \uD0ED\uC5D0\uC11C Anthropic API \uD0A4\uB97C \uC785\uB825\uD558\uAC70\uB098, \uC2DC\uD2B8 \uB85C\uADF8\uC778\uC744 \uD574\uC8FC\uC138\uC694.','warn');
+    btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;return;
+  }
+  showNote('manualOcrNote','\uD83D\uDD0D Google Drive OCR\uB85C \uBD84\uC11D \uC911...','info');
   try {
     var ocrTexts = [];
     for(var item of files) {
-      showNote('manualOcrNote','🔍 ' + item.file.name + ' OCR 처리 중...','info');
-      var b64 = await blobToBase64(item.file);
-      
-      // Google Drive에 임시 업로드 → Google Doc 변환 (OCR)
-      if(!token){
-        showNote('manualOcrNote','⚠️ 시트 로그인이 필요합니다.','warn');
-        btn.textContent='🔍 서류 분석 시작';btn.disabled=false;return;
-      }
-      
-      // 파일 업로드
-      var mimeType = item.file.type || 'image/jpeg';
-      var metadata = {name: '_upload_ocr_' + Date.now(), mimeType: 'application/vnd.google-apps.document'};
+      showNote('manualOcrNote','\uD83D\uDD0D '+item.file.name+' OCR \uCC98\uB9AC \uC911...','info');
+      var metadata = {name:'_upload_ocr_'+Date.now(),mimeType:'application/vnd.google-apps.document'};
       var form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
-      form.append('file', item.file);
-      
-      var upResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST',
-        headers: {'Authorization': 'Bearer ' + token},
-        body: form
-      });
-      
-      if(!upResp.ok){
-        console.warn('Upload failed:', upResp.status, await upResp.text());
-        continue;
-      }
+      form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));
+      form.append('file',item.file);
+      var upResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+        method:'POST',headers:{'Authorization':'Bearer '+token},body:form});
+      if(!upResp.ok) continue;
       var upData = await upResp.json();
-      
-      // 텍스트 추출
-      var txtResp = await fetch('https://www.googleapis.com/drive/v3/files/' + upData.id + '/export?mimeType=text/plain', {
-        headers: {'Authorization': 'Bearer ' + token}
-      });
-      if(txtResp.ok) {
-        var txt = await txtResp.text();
-        if(txt.trim()) ocrTexts.push(txt);
-      }
-      // 임시 파일 삭제
-      fetch('https://www.googleapis.com/drive/v3/files/' + upData.id, {
-        method: 'DELETE', headers: {'Authorization': 'Bearer ' + token}
-      }).catch(function(){});
+      var txtResp = await fetch('https://www.googleapis.com/drive/v3/files/'+upData.id+'/export?mimeType=text/plain',{
+        headers:{'Authorization':'Bearer '+token}});
+      if(txtResp.ok){var txt=await txtResp.text();if(txt.trim())ocrTexts.push(txt);}
+      fetch('https://www.googleapis.com/drive/v3/files/'+upData.id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}}).catch(function(){});
     }
-    
-    if(ocrTexts.length > 0) {
-      // 파싱 및 병합
-      var merged = {};
-      var folderName = document.getElementById('f_name')?.value || '';
-      for(var k = 0; k < ocrTexts.length; k++) {
-        var partial = parseOcrText(ocrTexts[k], folderName);
-        console.log('ManualOCR[' + k + ']:', JSON.stringify(partial).substring(0, 300));
-        for(var key in partial) {
-          if(key === 'raw' || key === '_ocrPreview') continue;
-          if(!merged[key] && partial[key]) merged[key] = partial[key];
-        }
+    if(ocrTexts.length>0){
+      var merged={};var folderName='';
+      for(var k=0;k<ocrTexts.length;k++){
+        var partial=parseOcrText(ocrTexts[k],folderName);
+        for(var key in partial){if(key==='raw'||key==='_ocrPreview')continue;if(!merged[key]&&partial[key])merged[key]=partial[key];}
       }
-      ocrData = merged;
-      renderOcrResult(merged);
-      // 폴더명도 생성
-      if(typeof generateFolderName === 'function') generateFolderName();
-      // 폼에도 채우기
-      fillFormFromOcr(merged);
-      showNote('manualOcrNote','✅ 분석 완료! (' + ocrTexts.length + '장 처리)','ok');
-      document.getElementById('step2').style.display = 'block';
+      ocrData=merged;fillFormFromOcr(merged);renderOcrResult(merged);
+      if(typeof generateFolderName==='function')generateFolderName();
+      showNote('manualOcrNote','\u2705 OCR \uBD84\uC11D \uC644\uB8CC!','ok');
+      document.getElementById('step2').style.display='block';
       document.getElementById('step2').scrollIntoView({behavior:'smooth'});
     } else {
-      showNote('manualOcrNote','⚠️ OCR 추출 실패. 다른 파일을 시도해보세요.','warn');
+      showNote('manualOcrNote','\u26a0\ufe0f OCR \uC2E4\uD328.','warn');
     }
   } catch(e) {
-    console.error('analyzeManualFiles error:', e);
-    showNote('manualOcrNote','❌ 오류: ' + e.message,'err');
+    showNote('manualOcrNote','\u274c \uC624\uB958: '+e.message,'err');
   }
-  btn.textContent = '🔍 서류 분석 시작';
-  btn.disabled = false;
+  btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+}
+
+function fillFormFromOcr(d) {
+  if(!d) return;
+  resetForm();
+  var map = {
+    'custName':'f_name','birth':'f_birth','phone':'f_phone',
+    'model':'f_model','plan':'f_plan','serial':'f_serial',
+    'capacity':'f_cap','cardName':'f_card','sellerName':'f_seller',
+    'sellerDisplay':'f_seller','addonService':'f_addon','insurance':'f_ins',
+    'openDate':'f_date','retailPrice':'f_cap',
+    '고객명':'f_name','생년월일':'f_birth','판매자':'f_seller'
+  };
+  for(var k in d) {
+    var fid = map[k];
+    if(fid && d[k]) {
+      var el = document.getElementById(fid);
+      if(el && !el.value) { el.value = d[k]; el.dispatchEvent(new Event('input',{bubbles:true})); }
+    }
+  }
+  // 날짜
+  if(d.openDate){var el=document.getElementById('f_date');if(el)el.value=d.openDate;}
+  // select
+  if(d.activationType){var act=d.activationType;if(act.indexOf('기변')>=0)act='기변';else if(act.indexOf('번호')>=0||act==='MNP')act='번이';else if(act.indexOf('신규')>=0)act='신규';
+    var s=document.getElementById('f_act');if(s){for(var o of s.options)if(o.value===act){s.value=act;break;}}}
+  if(d.discountType){var dt=d.discountType;var s2=document.getElementById('f_disc');if(s2){
+    if(dt.indexOf('선택')>=0||dt==='선약')s2.value='선약';
+    else if(dt.indexOf('공시')>=0||dt==='공시')s2.value='공시';}}
+  if(d.contractMonths||d.contractM){var v=d.contractMonths||d.contractM;var s3=document.getElementById('f_contract');if(s3){for(var o of s3.options)if(o.value===String(v)){s3.value=String(v);break;}}}
+  if(d.installmentMonths||d.installmentM){var v=d.installmentMonths||d.installmentM;var s4=document.getElementById('f_inst');if(s4){for(var o of s4.options)if(o.value===String(v)){s4.value=String(v);break;}}}
+  // 판매자 포맷
+  if(d.sellerName && !d.sellerDisplay){
+    var el=document.getElementById('f_seller');
+    if(el) el.value=d.sellerName+'(매)';
+  }
+}
+
+// 드래그 & 드롭
+document.addEventListener('DOMContentLoaded',function(){
+  const zone=document.getElementById('priceDropZone');
+  if(!zone)return;
+  zone.addEventListener('dragover',function(e){e.preventDefault();zone.style.borderColor='#1a237e';zone.style.background='#e8eaf6';});
+  zone.addEventListener('dragleave',function(){zone.style.borderColor='#c5cae9';zone.style.background='#f8f9ff';});
+  zone.addEventListener('drop',function(e){e.preventDefault();zone.style.borderColor='#c5cae9';zone.style.background='#f8f9ff';handlePriceUpload(e.dataTransfer.files);});
+});
+// 저장된 단가표 복원
+try{const saved=localStorage.getItem('ktPriceData');if(saved)renderPriceTable(JSON.parse(saved));}catch(e){}
+
+
+// 폴더명 추출 및 복사
+function generateFolderName(){
+  if(!ocrData) return '';
+  var d = ocrData;
+  // 날짜: 부모 폴더에서 추출 또는 오늘 날짜
+  var dateStr = d.dateFormatted ? d.dateFormatted.replace(/\D/g,'').substring(2) : '';
+  if(!dateStr || dateStr.length !== 6){
+    var now = new Date();
+    var y = String(now.getFullYear()).substring(2);
+    var m = String(now.getMonth()+1).padStart(2,'0');
+    var dd = String(now.getDate()).padStart(2,'0');
+    dateStr = y + m + dd;
+  }
+  var name = d.custName || d['고객명'] || '';
+  var birth = d.birth || d['생년월일'] || '';
+  // 담당자
+  var seller = '';
+  if(d.sellerName) seller = d.sellerName + '매';
+  else if(d.sellerDisplay) seller = d.sellerDisplay.replace(/[()]/g,'');
+  // 단말 약칭
+  var model = d.model || d.modelRaw || '';
+  // SM-A276K → a276, SM-A165NK → a165 등 약칭 변환
+  if(model.match(/^[A-Z]{2}-/i)){
+    var shortM = model.replace(/^[A-Z]{2}-/i,'').replace(/[NK]+$/i,'').toLowerCase();
+    model = shortM;
+  }
+  model = model.toLowerCase();
+  // 특수 모델 매핑 (폼폼푸린 등)
+  if(model.indexOf('a175')>=0 && model.indexOf('kp')>=0) model = 'a175폼폼';
+  
+  var disc = d.discountType || '';
+  if(disc === '선약') disc = '선약';
+  else if(disc === '공시') disc = '공시';
+  
+  var actType = d.activationType || '';
+  if(actType === '기변') actType = '기변';
+  else if(actType === '번이' || actType === 'MNP') actType = 'mnp';
+  else if(actType === '신규') actType = '신규';
+  else if(actType === '전환') actType = '전환';
+  
+  var term = '';
+  if(d.contractM && d.installmentM) term = d.contractM + '-' + d.installmentM;
+  else if(d.contractM) term = d.contractM + '-' + d.contractM;
+  
+  var card = d.cardName || '';
+  if(!card) card = '카드x';
+  
+  var parts = [dateStr, name, birth, seller, model, disc, actType, term, card];
+  // 빈 값 필터링 (확인필요 표시)
+  var missing = [];
+  var labels = ['날짜','고객명','생년월일','담당자','단말','선약/공시','개통유형','약정-할부','카드'];
+  parts = parts.map(function(v, i){
+    if(!v){missing.push(labels[i]);return '[확인필요]';}
+    return v;
+  });
+  
+  var folderName = parts.join(' ');
+  
+  // 표시
+  document.getElementById('folderNameOutput').style.display = 'block';
+  document.getElementById('folderNameValue').textContent = folderName;
+  var noteEl = document.getElementById('folderNameNote');
+  if(missing.length > 0){
+    noteEl.innerHTML = '⚠️ <b>확인 필요:</b> ' + missing.join(', ');
+    noteEl.style.color = '#b45309';
+  } else {
+    noteEl.innerHTML = '✅ 모든 필드 추출 완료';
+    noteEl.style.color = '#166534';
+  }
+  
+  return folderName;
+}
+
+function copyFolderName(){
+  var val = document.getElementById('folderNameValue').textContent;
+  navigator.clipboard.writeText(val).then(function(){
+    var btn = document.querySelector('#folderNameOutput button');
+    btn.textContent = '✅ 복사 완료!';
+    setTimeout(function(){btn.textContent='📋 폴더명 복사';},2000);
+  });
+}
+
+
+// 서류 직접 업로드 기능
+var manualFiles = {guide: null, app: null};
+
+function handleManualFile(input, type) {
+  var f = input.files[0];
+  if(!f) return;
+  if(f.size > 10*1024*1024){alert('파일 크기가 10MB를 초과합니다.');return;}
+  manualFiles[type] = f;
+  var infoEl = document.getElementById(type==='guide'?'fileGuideInfo':'fileAppInfo');
+  infoEl.innerHTML = '✅ ' + f.name + ' (' + Math.round(f.size/1024) + 'KB)';
+  var dropEl = document.getElementById(type==='guide'?'dropGuide':'dropApp');
+  dropEl.style.borderColor = type==='guide'?'#3949ab':'#e65100';
+  dropEl.style.background = type==='guide'?'#e8eaf6':'#fff3e0';
+  dropEl.querySelector('div:first-child').textContent = '✅';
+  // 버튼 표시
+  if(manualFiles.guide || manualFiles.app) {
+    document.getElementById('btnManualOcr').style.display = 'block';
+  }
+  input.value = '';
+}
+
+async function analyzeManualFiles() {
+  var files = [];
+  if(manualFiles.guide) files.push({file: manualFiles.guide, type: 'guide'});
+  if(manualFiles.app) files.push({file: manualFiles.app, type: 'app'});
+  if(!files.length){alert('파일을 먼저 업로드하세요.');return;}
+  
+  var btn = document.getElementById('btnManualOcr');
+  btn.innerHTML = '<span class="spin"></span> 분석 중...';
+  btn.disabled = true;
+  
+  var anthropicKey = gv('anthropicKey');
+  
+  if(anthropicKey) {
+    // Claude API 방식 (Google 로그인 불필요)
+    showNote('manualOcrNote','🤖 Claude AI로 서류 분석 중...','info');
+    try {
+      var imageContents = [];
+      for(var item of files) {
+        var b64 = await blobToBase64(item.file);
+        var mimeType = item.file.type || 'image/jpeg';
+        if(item.file.name.match(/\.pdf$/i)) mimeType = 'application/pdf';
+        imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
+      }
+      
+      var messages = [{role:'user',content:[
+        ...imageContents,
+        {type:'text',text:'\uC774 \uC774\uBBF8\uC9C0\uB294 KT \uD1B5\uC2E0 \uAC00\uC785\uC2E0\uCCAD\uC11C \uB610\uB294 \uAC1C\uD1B5\uC548\uB0B4\uC11C\uC785\uB2C8\uB2E4.\n\uB2E4\uC74C \uD56D\uBAA9\uC744 JSON\uC73C\uB85C \uCD94\uCD9C\uD574\uC8FC\uC138\uC694:\n- custName (\uACE0\uAC1D\uBA85)\n- birth (\uC0DD\uB144\uC6D4\uC77C 6\uC790\uB9AC YYMMDD)\n- phone (\uAC1C\uD1B5\uBC88\uD638 010-XXXX-XXXX)\n- model (\uB2E8\uB9D0\uAE30 \uBAA8\uB378\uCF54\uB4DC SM-XXXX)\n- plan (\uC694\uAE08\uC81C\uBA85)\n- planFee (\uC694\uAE08\uC81C \uC6D4\uC815\uC561)\n- serial (\uAE30\uAE30\uC77C\uB828\uBC88\uD638)\n- capacity (\uC6A9\uB7C9 256G \uB4F1)\n- retailPrice (\uCD9C\uACE0\uAC00)\n- subsidy (\uACF5\uC2DC\uC9C0\uC6D0\uAE08)\n- installment (\uD560\uBD80\uC6D0\uAE08)\n- contractMonths (\uC57D\uC815\uAC1C\uC6D4)\n- installmentMonths (\uD560\uBD80\uAC1C\uC6D4)\n- discountType (\uC120\uD0DD\uC57D\uC815/\uACF5\uC2DC\uC9C0\uC6D0\uAE08)\n- cardName (\uC81C\uD734\uCE74\uB4DC\uC0AC\uBA85)\n- activationType (\uC2E0\uADDC/\uAE30\uBCC0/\uBC88\uC774/\uC804\uD658)\n- sellerName (\uD310\uB9E4\uC790\uBA85)\n- addonService (\uBD80\uAC00\uC11C\uBE44\uC2A4\uBA85)\n- insurance (\uBCF4\uD5D8\uBA85)\n- welfareType (\uBCF5\uC9C0\uD560\uC778 \uC720\uD615: \uC0DD\uACC4/\uAE30\uCD08\uC5F0\uAE08/\uC7A5\uC560\uC778)\n- welfareDiscount (\uBCF5\uC9C0\uD560\uC778 \uAE08\uC561)\n- openDate (\uAC1C\uD1B5\uC77C YYYY.MM.DD)\nJSON\uB9CC \uCD9C\uB825\uD558\uC138\uC694.'}
+      ]}];
+      
+      var apiResp = await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'x-api-key':anthropicKey,
+          'anthropic-version':'2023-06-01',
+          'anthropic-dangerous-direct-browser-access':'true'
+        },
+        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:messages})
+      });
+      
+      if(!apiResp.ok){
+        var errText = await apiResp.text();
+        console.error('Claude API error:',apiResp.status,errText);
+        showNote('manualOcrNote','\u26a0\ufe0f Claude API \uC624\uB958: '+apiResp.status+'. \uC124\uC815 \uD0ED\uC5D0\uC11C API \uD0A4\uB97C \uD655\uC778\uD558\uC138\uC694.','warn');
+        btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;return;
+      }
+      
+      var result = await apiResp.json();
+      var text = (result.content||[]).map(function(c){return c.text||'';}).join('');
+      var jsonMatch = text.match(/\{[\s\S]*\}/);
+      
+      if(jsonMatch){
+        var parsed = JSON.parse(jsonMatch[0]);
+        ocrData = parsed;
+        // \uD3FC \uCC44\uC6B0\uAE30
+        fillFormFromOcr(parsed);
+        renderOcrResult(parsed);
+        if(typeof generateFolderName==='function') generateFolderName();
+        showNote('manualOcrNote','\u2705 Claude AI \uBD84\uC11D \uC644\uB8CC!','ok');
+        document.getElementById('step2').style.display='block';
+        document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+      } else {
+        showNote('manualOcrNote','\u26a0\ufe0f \uBD84\uC11D \uACB0\uACFC\uB97C \uD30C\uC2F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.','warn');
+      }
+      btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+      return;
+    } catch(e) {
+      console.error('Claude analysis error:',e);
+      showNote('manualOcrNote','\u274c Claude \uC624\uB958: '+e.message,'err');
+      btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
+      return;
+    }
+  }
+  
+  // Google Drive OCR \uBC29\uC2DD (\uD3B4\uBC31)
+  if(!token){
+    showNote('manualOcrNote','\u26a0\ufe0f \uC124\uC815 \uD0ED\uC5D0\uC11C Anthropic API \uD0A4\uB97C \uC785\uB825\uD558\uAC70\uB098, \uC2DC\uD2B8 \uB85C\uADF8\uC778\uC744 \uD574\uC8FC\uC138\uC694.','warn');
+    btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;return;
+  }
+  showNote('manualOcrNote','\uD83D\uDD0D Google Drive OCR\uB85C \uBD84\uC11D \uC911...','info');
+  try {
+    var ocrTexts = [];
+    for(var item of files) {
+      showNote('manualOcrNote','\uD83D\uDD0D '+item.file.name+' OCR \uCC98\uB9AC \uC911...','info');
+      var metadata = {name:'_upload_ocr_'+Date.now(),mimeType:'application/vnd.google-apps.document'};
+      var form = new FormData();
+      form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));
+      form.append('file',item.file);
+      var upResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+        method:'POST',headers:{'Authorization':'Bearer '+token},body:form});
+      if(!upResp.ok) continue;
+      var upData = await upResp.json();
+      var txtResp = await fetch('https://www.googleapis.com/drive/v3/files/'+upData.id+'/export?mimeType=text/plain',{
+        headers:{'Authorization':'Bearer '+token}});
+      if(txtResp.ok){var txt=await txtResp.text();if(txt.trim())ocrTexts.push(txt);}
+      fetch('https://www.googleapis.com/drive/v3/files/'+upData.id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}}).catch(function(){});
+    }
+    if(ocrTexts.length>0){
+      var merged={};var folderName='';
+      for(var k=0;k<ocrTexts.length;k++){
+        var partial=parseOcrText(ocrTexts[k],folderName);
+        for(var key in partial){if(key==='raw'||key==='_ocrPreview')continue;if(!merged[key]&&partial[key])merged[key]=partial[key];}
+      }
+      ocrData=merged;fillFormFromOcr(merged);renderOcrResult(merged);
+      if(typeof generateFolderName==='function')generateFolderName();
+      showNote('manualOcrNote','\u2705 OCR \uBD84\uC11D \uC644\uB8CC!','ok');
+      document.getElementById('step2').style.display='block';
+      document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+    } else {
+      showNote('manualOcrNote','\u26a0\ufe0f OCR \uC2E4\uD328.','warn');
+    }
+  } catch(e) {
+    showNote('manualOcrNote','\u274c \uC624\uB958: '+e.message,'err');
+  }
+  btn.textContent='\uD83D\uDD0D \uC11C\uB958 \uBD84\uC11D \uC2DC\uC791';btn.disabled=false;
 }
 
 function fillFormFromOcr(d) {
