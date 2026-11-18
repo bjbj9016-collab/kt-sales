@@ -1306,7 +1306,7 @@ async function analyzePriceTable(){
       const b64=await blobToBase64(f);
       let mimeType=f.type||'image/jpeg';
       if(f.name.match(/\.pdf$/i))mimeType='application/pdf';
-      imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
+      var contentType = mimeType === 'application/pdf' ? 'document' : 'image'; imageContents.push({type:contentType,source:{type:'base64',media_type:mimeType,data:b64}});
     }
     
     const messages=[{role:'user',content:[
