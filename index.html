@@ -1165,7 +1165,7 @@ JSON만 출력하세요.`}
         'anthropic-dangerous-direct-browser-access':'true'
       },
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
+        model:'claude-sonnet-4-6',
         max_tokens:2000,
         messages
       })
@@ -1338,7 +1338,7 @@ JSON만 출력하세요.`}
         'anthropic-version':'2023-06-01',
         'anthropic-dangerous-direct-browser-access':'true'
       },
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages})
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4000,messages})
     });
 
     if(!resp.ok){
@@ -1529,7 +1529,7 @@ async function analyzeManualFiles() {
         var b64 = await blobToBase64(item.file);
         var mimeType = item.file.type || 'image/jpeg';
         if(item.file.name.match(/\.pdf$/i)) mimeType = 'application/pdf';
-        var contentType = mimeType === 'application/pdf' ? 'document' : 'image'; imageContents.push({type:contentType,source:{type:'base64',media_type:mimeType,data:b64}});
+        imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
       }
       
       var messages = [{role:'user',content:[
@@ -1545,7 +1545,7 @@ async function analyzeManualFiles() {
           'anthropic-version':'2023-06-01',
           'anthropic-dangerous-direct-browser-access':'true'
         },
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:messages})
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3000,messages:messages})
       });
       
       if(!apiResp.ok){
@@ -1797,7 +1797,7 @@ async function analyzeManualFiles() {
         var b64 = await blobToBase64(item.file);
         var mimeType = item.file.type || 'image/jpeg';
         if(item.file.name.match(/\.pdf$/i)) mimeType = 'application/pdf';
-        var contentType = mimeType === 'application/pdf' ? 'document' : 'image'; imageContents.push({type:contentType,source:{type:'base64',media_type:mimeType,data:b64}});
+        imageContents.push({type:'image',source:{type:'base64',media_type:mimeType,data:b64}});
       }
       
       var messages = [{role:'user',content:[
@@ -1813,7 +1813,7 @@ async function analyzeManualFiles() {
           'anthropic-version':'2023-06-01',
           'anthropic-dangerous-direct-browser-access':'true'
         },
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,messages:messages})
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3000,messages:messages})
       });
       
       if(!apiResp.ok){
