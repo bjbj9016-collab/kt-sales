@@ -1118,6 +1118,43 @@ async function analyzeCustomerFolder(folderId, folderName){
       return aApp-bApp;
     });
     showNote('ocrNote','\ud83d\udcc4 서류 '+docs.length+'장 발견 \u2014 OCR 분석 중...','info');
+    var anthropicKey2 = gv('anthropicKey');
+    if(anthropicKey2){
+      showNote('ocrNote','\ud83e\udd16 Claude AI\ub85c \uc11c\ub958 \ubd84\uc11d \uc911...','info');
+      try{
+        var imgContents=[];
+        for(var f2 of sorted.slice(0,3)){
+          showNote('ocrNote','\ud83d\udcc4 '+f2.name+' \ub2e4\uc6b4\ub85c\ub4dc \uc911...','info');
+          var dlResp2=await fetch('https://www.googleapis.com/drive/v3/files/'+f2.id+'?alt=media',{headers:{'Authorization':'Bearer '+token}});
+          if(!dlResp2.ok)continue;
+          var blob2=await dlResp2.blob();
+          var b642=await blobToBase64(blob2);
+          imgContents.push({type:'image',source:{type:'base64',media_type:f2.mimeType||'image/jpeg',data:b642}});
+        }
+        if(imgContents.length){
+          showNote('ocrNote','\ud83d\ude80 Claude API \ud638\ucd9c \uc911... (10~30\ucd08)','info');
+          var prompt2='\uc774 \uc774\ubbf8\uc9c0\ub294 KT \ud1b5\uc2e0 \uac00\uc785\uc2e0\uccad\uc11c \ub610\ub294 \uac1c\ud1b5\uc548\ub0b4\uc11c\uc785\ub2c8\ub2e4.\n\ub2e4\uc74c \ud56d\ubaa9\uc744 JSON\uc73c\ub85c \ucd94\ucd9c:\n- custName\n- birth (6\uc790\ub9ac YYMMDD)\n- phone (010-XXXX-XXXX)\n- model\n- plan\n- planFee\n- serial\n- capacity\n- retailPrice\n- subsidy\n- installment\n- contractMonths\n- installmentMonths\n- discountType\n- cardName\n- activationType\n- sellerName\n- carrier\n- addonService\n- insurance\n- welfareType\n- welfareDiscount\n- openDate (YYYY.MM.DD)\nJSON\ub9cc \ucd9c\ub825.';
+          var apiR=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':anthropicKey2,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3000,messages:[{role:'user',content:[...imgContents,{type:'text',text:prompt2}]}]})});
+          if(apiR.ok){
+            var res2=await apiR.json();
+            var txt2=(res2.content||[]).map(function(c){return c.text||'';}).join('');
+            var jm2=txt2.match(/\{[\s\S]*\}/);
+            if(jm2){
+              var p2=JSON.parse(jm2[0]);
+              ocrData=p2;renderOcrResult(p2);fillFormFromOcr(p2);
+              if(typeof generateFolderName==='function')generateFolderName();
+              if(typeof generateResults==='function')generateResults();
+              document.getElementById('step2').style.display='block';
+              showNote('ocrNote','\u2705 Claude AI \ubd84\uc11d \uc644\ub8cc! '+Object.keys(p2).length+'\uac1c \ud56d\ubaa9','ok');
+              return;
+            }
+          } else {
+            var eT=await apiR.text();
+            showNote('ocrNote','\u26a0\ufe0f Claude API \uc624\ub958('+apiR.status+'), Google OCR\ub85c \uc804\ud658...','warn');
+          }
+        }
+      }catch(ce){showNote('ocrNote','\u26a0\ufe0f Claude \uc624\ub958: '+ce.message+', Google OCR\ub85c \uc804\ud658...','warn');}
+    }
     var ocrTexts=[];var processedNames=[];
     for(var f of sorted.slice(0,3)){
       try{
