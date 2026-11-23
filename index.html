@@ -364,13 +364,42 @@ code{font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1
     <div class="field"><label>AM 사유</label><input id="f_amMemo" placeholder="카드 3만 + 필수팩 3만"></div>
 
     
-  <!-- 폴더명 출력 (판매일보 수동업로드용) -->
-  <div id="manualFolderNameOutput" style="display:none;margin:16px 0;padding:16px;background:#e8f5e9;border-radius:12px;border:2px solid #4caf50;">
-    <div style="font-weight:700;font-size:15px;margin-bottom:8px;">\ud83d\udcc2 \ucd94\ucd9c\ub41c \ud3f4\ub354\uba85</div>
-    <div id="manualFolderNameValue" style="font-family:monospace;font-size:14px;background:#fff;padding:12px;border-radius:8px;word-break:break-all;"></div>
-    <button onclick="var v=document.getElementById('manualFolderNameValue').textContent;navigator.clipboard.writeText(v).then(function(){showNote('manualOcrNote','\u2705 \ud3f4\ub354\uba85 \ubcf5\uc0ac\ub428!','ok');})" style="margin-top:8px;padding:8px 20px;background:#4caf50;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">\ud83d\udccb \ud3f4\ub354\uba85 \ubcf5\uc0ac</button>
+  
+
+  <!-- ========== 결과 출력 패널 (3가지) ========== -->
+  <div id="resultPanel" style="display:none;margin-top:20px;">
+    
+    <!-- 1. 폴더명 -->
+    <div style="background:#1a237e;border-radius:12px;padding:16px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="color:#90caf9;font-weight:700;font-size:15px;">\ud83d\udcc2 1. \ud3f4\ub354\uba85</span>
+        <button onclick="copyResult('resultFolder')" style="padding:6px 16px;background:#42a5f5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">\ubcf5\uc0ac</button>
+      </div>
+      <div id="resultFolder" style="font-family:monospace;font-size:14px;background:#0d1b3e;color:#e3f2fd;padding:12px;border-radius:8px;word-break:break-all;min-height:20px;"></div>
+    </div>
+
+    <!-- 2. 판매일보 -->
+    <div style="background:#1b5e20;border-radius:12px;padding:16px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="color:#a5d6a7;font-weight:700;font-size:15px;">\u270d\ufe0f 2. \ud310\ub9e4\uc77c\ubcf4</span>
+        <button onclick="copyResult('resultSales')" style="padding:6px 16px;background:#66bb6a;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">\ubcf5\uc0ac</button>
+      </div>
+      <div id="resultSales" style="font-family:monospace;font-size:13px;background:#0d2e10;color:#c8e6c9;padding:12px;border-radius:8px;word-break:break-all;min-height:20px;white-space:pre-wrap;"></div>
+    </div>
+
+    <!-- 3. 연락처 -->
+    <div style="background:#e65100;border-radius:12px;padding:16px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="color:#ffe0b2;font-weight:700;font-size:15px;">\ud83d\udcde 3. \uc5f0\ub77d\ucc98</span>
+        <button onclick="copyResult('resultContact')" style="padding:6px 16px;background:#ff9800;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">\ubcf5\uc0ac</button>
+      </div>
+      <div id="resultContact" style="font-family:monospace;font-size:14px;background:#3e2200;color:#ffe0b2;padding:12px;border-radius:8px;min-height:20px;"></div>
+    </div>
+
   </div>
-<button class="btn btn-p" onclick="genOutput()">📋 출력 생성</button>
+  <!-- 결과 패널 끝 -->
+
+  <button class="btn btn-p" onclick="generateResults()" style="margin-top:12px;">\ud83d\ude80 \uacb0\uacfc \ucd94\ucd9c</button>
   </div>
 
   <!-- STEP 3 -->
@@ -1121,6 +1150,7 @@ async function analyzeCustomerFolder(folderId, folderName){
       renderOcrResult(merged);
       fillFormFromOcr(merged);
       if(typeof generateFolderName==='function') generateFolderName();
+      if(typeof generateResults==='function') generateResults();
       document.getElementById('step2').style.display='block';
       var mfno=document.getElementById('manualFolderNameOutput');var mfnv=document.getElementById('manualFolderNameValue');if(mfno&&mfnv){var fnEl=document.getElementById('folderNameValue');if(fnEl&&fnEl.textContent){mfnv.textContent=fnEl.textContent;mfno.style.display='block';}}
       showNote('ocrNote','\u2705 OCR 분석 완료! ('+ocrTexts.length+'장 처리)','ok');
@@ -1593,6 +1623,7 @@ async function analyzeManualFiles() {
         ocrData = parsed;
         fillFormFromOcr(parsed);
         if(typeof renderOcrResult==='function') renderOcrResult(parsed);
+        if(typeof generateResults==='function') generateResults();
         if(typeof generateFolderName==='function') generateFolderName();
         showNote('manualOcrNote','\u2705 Claude AI \ubd84\uc11d \uc644\ub8cc! \ucd94\ucd9c\ub41c \ud56d\ubaa9: '+Object.keys(parsed).length+'\uac1c','ok');
         document.getElementById('step2').style.display='block';
@@ -1650,6 +1681,7 @@ async function analyzeManualFiles() {
       }
       ocrData=merged;fillFormFromOcr(merged);
       if(typeof renderOcrResult==='function') renderOcrResult(merged);
+      if(typeof generateResults==='function') generateResults();
       if(typeof generateFolderName==='function')generateFolderName();
       showNote('manualOcrNote','\u2705 OCR \ubd84\uc11d \uc644\ub8cc!','ok');
       document.getElementById('step2').style.display='block';
@@ -1888,6 +1920,7 @@ async function analyzeManualFiles() {
         ocrData = parsed;
         fillFormFromOcr(parsed);
         if(typeof renderOcrResult==='function') renderOcrResult(parsed);
+        if(typeof generateResults==='function') generateResults();
         if(typeof generateFolderName==='function') generateFolderName();
         showNote('manualOcrNote','\u2705 Claude AI \ubd84\uc11d \uc644\ub8cc! \ucd94\ucd9c\ub41c \ud56d\ubaa9: '+Object.keys(parsed).length+'\uac1c','ok');
         document.getElementById('step2').style.display='block';
@@ -1945,6 +1978,7 @@ async function analyzeManualFiles() {
       }
       ocrData=merged;fillFormFromOcr(merged);
       if(typeof renderOcrResult==='function') renderOcrResult(merged);
+      if(typeof generateResults==='function') generateResults();
       if(typeof generateFolderName==='function')generateFolderName();
       showNote('manualOcrNote','\u2705 OCR \ubd84\uc11d \uc644\ub8cc!','ok');
       document.getElementById('step2').style.display='block';
@@ -2009,6 +2043,88 @@ function fillFormFromOcr(d) {
     }
   });
 });
+
+
+
+function generateResults() {
+  var d = ocrData || {};
+  var panel = document.getElementById('resultPanel');
+  if(!panel) return;
+  
+  // 1. 폴더명
+  var date = (d.openDate||'').replace(/[^0-9]/g,'');
+  if(date.length>=8) date = date.substring(2,8);
+  else if(date.length===6) date = date;
+  var name = d.custName || '';
+  var birth = d.birth || '';
+  var seller = d.sellerName ? d.sellerName.replace(/[()매사]/g,'') + '매' : '';
+  var model = d.model || '';
+  // 모델 약칭 변환 (간단 버전)
+  var modelShort = model.toLowerCase().replace('sm-','').replace('nk','').replace('갤럭시 ','').replace('galaxy ','');
+  var disc = '';
+  if(d.discountType) { disc = d.discountType.indexOf('선택')>=0||d.discountType==='선약'?'선약':'공시'; }
+  var actType = '';
+  if(d.activationType) {
+    var a = d.activationType;
+    if(a.indexOf('기변')>=0||a.indexOf('기기변경')>=0) actType='기변';
+    else if(a.indexOf('번호')>=0||a==='MNP'||a.indexOf('번이')>=0) actType='mnp';
+    else if(a.indexOf('신규')>=0) actType='신규';
+    else if(a.indexOf('전환')>=0) actType='전환';
+    else actType=a;
+  }
+  var contract = d.contractMonths || '';
+  var installment = d.installmentMonths || '';
+  var period = contract + '-' + installment;
+  var card = d.cardName || '카드x';
+  if(!card || card==='없음' || card==='미등록') card='카드x';
+  
+  var folderName = [date, name, birth, seller, modelShort, disc, actType, period, card].filter(function(v){return v;}).join(' ');
+  document.getElementById('resultFolder').textContent = folderName;
+  
+  // 2. 판매일보 (탭 구분 형식 - 스프레드시트 붙여넣기용)
+  var salesFields = [
+    d.openDate || '',
+    name,
+    birth,
+    d.phone || '',
+    d.activationType || '',
+    d.model || '',
+    d.capacity || '',
+    d.serial || '',
+    d.plan || '',
+    d.planFee || '',
+    disc,
+    contract,
+    installment,
+    d.retailPrice || '',
+    d.subsidy || '',
+    d.installment || '',
+    card,
+    d.sellerName || '',
+    d.addonService || '',
+    d.insurance || '',
+    d.welfareType || '',
+    d.welfareDiscount || ''
+  ];
+  document.getElementById('resultSales').textContent = salesFields.join('\t');
+  
+  // 3. 연락처
+  var phone = d.phone || '';
+  document.getElementById('resultContact').textContent = name + '\t' + phone;
+  
+  panel.style.display = 'block';
+  panel.scrollIntoView({behavior:'smooth'});
+}
+
+function copyResult(id) {
+  var el = document.getElementById(id);
+  if(!el) return;
+  navigator.clipboard.writeText(el.textContent).then(function(){
+    var orig = el.style.outline;
+    el.style.outline = '2px solid #4caf50';
+    setTimeout(function(){ el.style.outline = orig; }, 800);
+  });
+}
 
 </script>
 </body>
